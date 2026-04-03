@@ -13,6 +13,14 @@ const laneOptions: Array<{ id: Lane | 'all'; label: string }> = [
   { id: 'done', label: 'Erledigt' },
 ];
 
+const sortOptions = [
+  { id: 'createdDesc', label: 'Neueste zuerst' },
+  { id: 'updatedDesc', label: 'Zuletzt geändert' },
+  { id: 'dueDateAsc', label: 'Fälligkeit zuerst' },
+] as const;
+
+type SortOptionId = (typeof sortOptions)[number]['id'];
+
 export function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -30,6 +38,7 @@ export function App() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedLane, setSelectedLane] = useState<Lane | 'all'>('all');
+  const [selectedSort, setSelectedSort] = useState<SortOptionId>('createdDesc');
 
   useEffect(() => {
     void loadInitialData();
@@ -158,6 +167,40 @@ export function App() {
     categoriesById,
   ]);
 
+  const sortedTasks = useMemo(() => {
+    const nextTasks = [...filteredTasks];
+
+    function getTime(value: string | null) {
+      if (!value) {
+        return 0;
+      }
+
+      const timestamp = Date.parse(value);
+      return Number.isNaN(timestamp) ? 0 : timestamp;
+    }
+
+    nextTasks.sort((left, right) => {
+      if (selectedSort === 'updatedDesc') {
+        return getTime(right.updatedAt) - getTime(left.updatedAt);
+      }
+
+      if (selectedSort === 'dueDateAsc') {
+        const leftDue = left.dueDate ? getTime(left.dueDate) : Number.POSITIVE_INFINITY;
+        const rightDue = right.dueDate ? getTime(right.dueDate) : Number.POSITIVE_INFINITY;
+
+        if (leftDue !== rightDue) {
+          return leftDue - rightDue;
+        }
+
+        return getTime(right.createdAt) - getTime(left.createdAt);
+      }
+
+      return getTime(right.createdAt) - getTime(left.createdAt);
+    });
+
+    return nextTasks;
+  }, [filteredTasks, selectedSort]);
+
   const laneCounts = useMemo(() => {
     const counts = new Map<Lane | 'all', number>();
 
@@ -229,6 +272,21 @@ export function App() {
 
     return workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.name ?? 'Aufgaben';
   }, [selectedLane, selectedWorkspaceId, workspaces]);
+
+  const hasActiveFilters =
+    selectedWorkspaceId !== null ||
+    selectedFolderId !== null ||
+    selectedCategoryId !== null ||
+    selectedLane !== 'all' ||
+    normalizedSearchQuery.length > 0;
+
+  function resetAllFilters() {
+    setSearchQuery('');
+    setSelectedWorkspaceId(null);
+    setSelectedFolderId(null);
+    setSelectedCategoryId(null);
+    setSelectedLane('all');
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -459,7 +517,7 @@ export function App() {
           </button>
         </form>
 
-        <div className="filter-toolbar">
+        <div className="filter-toolbar filter-toolbar--grid">
           <div className="filter-field filter-field--search">
             <label htmlFor="task-search">Suche</label>
             <input
@@ -487,26 +545,47 @@ export function App() {
             </select>
           </div>
 
-          <button
-            className="ghost-button"
-            type="button"
-            onClick={() => {
-              setSearchQuery('');
-              setSelectedCategoryId(null);
-            }}
-          >
-            Filter zurücksetzen
+          <div className="filter-field">
+            <label htmlFor="sort-filter">Sortierung</label>
+            <select
+              id="sort-filter"
+              value={selectedSort}
+              onChange={(event) => setSelectedSort(event.target.value as SortOptionId)}
+            >
+              {sortOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button className="ghost-button" type="button" onClick={resetAllFilters}>
+            Alle Filter zurücksetzen
           </button>
         </div>
 
         <div className="result-meta">
-          <span className="badge">{filteredTasks.length} Aufgaben</span>
+          <span className="badge">{sortedTasks.length} Aufgaben</span>
+          <span className="badge">Sortierung: {sortOptions.find((option) => option.id === selectedSort)?.label}</span>
+          {selectedWorkspaceId && (
+            <span className="badge">Workspace: {workspacesById.get(selectedWorkspaceId)?.name ?? '–'}</span>
+          )}
+          {selectedFolderId && (
+            <span className="badge">Ordner: {foldersById.get(selectedFolderId)?.name ?? '–'}</span>
+          )}
           {selectedCategoryId && (
-            <span className="badge">
-              Kategorie: {categoriesById.get(selectedCategoryId)?.name ?? '–'}
-            </span>
+            <span className="badge">Kategorie: {categoriesById.get(selectedCategoryId)?.name ?? '–'}</span>
+          )}
+          {selectedLane !== 'all' && (
+            <span className="badge">Lane: {laneOptions.find((lane) => lane.id === selectedLane)?.label ?? selectedLane}</span>
           )}
           {searchQuery.trim() && <span className="badge">Suche: {searchQuery.trim()}</span>}
+          {hasActiveFilters && (
+            <button className="ghost-button ghost-button--small" type="button" onClick={resetAllFilters}>
+              Filter löschen
+            </button>
+          )}
         </div>
 
         {error && <div className="notice notice--error">{error}</div>}
@@ -514,7 +593,7 @@ export function App() {
 
         {!loading && (
           <section className="task-list">
-            {filteredTasks.map((task) => {
+            {sortedTasks.map((task) => {
               const workspace = workspaces.find((item) => item.id === task.workspaceId);
               const folder = folders.find((item) => item.id === task.folderId);
               const category = categories.find((item) => item.id === task.categoryId);
@@ -543,7 +622,7 @@ export function App() {
               );
             })}
 
-            {filteredTasks.length === 0 && <div className="notice">Keine Aufgaben in dieser Ansicht.</div>}
+            {sortedTasks.length === 0 && <div className="notice">Keine Aufgaben in dieser Ansicht.</div>}
           </section>
         )}
       </section>

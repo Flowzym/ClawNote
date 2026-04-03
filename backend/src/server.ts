@@ -6,8 +6,6 @@ import { registerFolderRoutes } from './routes/folders.js';
 import { registerTaskRoutes } from './routes/tasks.js';
 import { registerWorkspaceRoutes } from './routes/workspaces.js';
 
-initializeDatabase();
-
 const app = Fastify({ logger: true });
 
 app.register(registerWorkspaceRoutes, { prefix: '/api/workspaces' });
@@ -25,6 +23,7 @@ app.get('/api/health', async () => {
 
 const start = async () => {
   try {
+    await initializeDatabase();
     await app.listen({ port: 3001, host: '127.0.0.1' });
   } catch (error) {
     app.log.error(error);

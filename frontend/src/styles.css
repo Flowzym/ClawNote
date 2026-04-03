@@ -161,6 +161,37 @@ textarea {
   color: #e5e7eb;
 }
 
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.overview-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #222b36;
+  border-radius: 12px;
+  background: #0d1218;
+  padding: 14px;
+}
+
+.overview-card__label {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.overview-card__value {
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.overview-card__hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
 .filter-toolbar {
   display: grid;
   gap: 12px;
@@ -169,7 +200,7 @@ textarea {
 }
 
 .filter-toolbar--grid {
-  grid-template-columns: minmax(220px, 1.4fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr) auto;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(150px, 0.75fr)) auto;
 }
 
 .filter-field {
@@ -368,6 +399,12 @@ textarea {
 .notice--error {
   border-color: #7f1d1d;
   color: #fecaca;
+}
+
+@media (max-width: 1400px) {
+  .filter-toolbar--grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1100px) {

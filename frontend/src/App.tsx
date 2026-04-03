@@ -13,6 +13,20 @@ const laneOptions: Array<{ id: Lane | 'all'; label: string }> = [
   { id: 'done', label: 'Erledigt' },
 ];
 
+const statusOptions = [
+  { id: 'all', label: 'Alle Status' },
+  { id: 'open', label: 'Offen' },
+  { id: 'done', label: 'Erledigt' },
+] as const;
+
+const priorityOptions = [
+  { id: 'all', label: 'Alle Prioritäten' },
+  { id: 'niedrig', label: 'Niedrig' },
+  { id: 'mittel', label: 'Mittel' },
+  { id: 'hoch', label: 'Hoch' },
+  { id: 'kritisch', label: 'Kritisch' },
+] as const;
+
 const sortOptions = [
   { id: 'createdDesc', label: 'Neueste zuerst' },
   { id: 'updatedDesc', label: 'Zuletzt geändert' },
@@ -20,6 +34,8 @@ const sortOptions = [
 ] as const;
 
 type SortOptionId = (typeof sortOptions)[number]['id'];
+type StatusFilterId = (typeof statusOptions)[number]['id'];
+type PriorityFilterId = (typeof priorityOptions)[number]['id'];
 
 export function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -38,6 +54,8 @@ export function App() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedLane, setSelectedLane] = useState<Lane | 'all'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<StatusFilterId>('all');
+  const [selectedPriority, setSelectedPriority] = useState<PriorityFilterId>('all');
   const [selectedSort, setSelectedSort] = useState<SortOptionId>('createdDesc');
 
   useEffect(() => {
@@ -89,22 +107,6 @@ export function App() {
     return folders.filter((folder) => folder.workspaceId === selectedWorkspaceId);
   }, [folders, selectedWorkspaceId]);
 
-  const visibleCategories = useMemo(() => {
-    const categoryIds = new Set(
-      tasks
-        .filter((task) => !selectedWorkspaceId || task.workspaceId === selectedWorkspaceId)
-        .filter((task) => !selectedFolderId || task.folderId === selectedFolderId)
-        .map((task) => task.categoryId)
-        .filter((value): value is string => Boolean(value)),
-    );
-
-    if (categoryIds.size === 0) {
-      return categories;
-    }
-
-    return categories.filter((category) => categoryIds.has(category.id));
-  }, [categories, tasks, selectedWorkspaceId, selectedFolderId]);
-
   function getTaskSearchText(task: Task): string {
     return [
       task.title,
@@ -127,6 +129,8 @@ export function App() {
       ignoreFolder?: boolean;
       ignoreLane?: boolean;
       ignoreCategory?: boolean;
+      ignoreStatus?: boolean;
+      ignorePriority?: boolean;
       ignoreSearch?: boolean;
     },
   ): boolean {
@@ -146,12 +150,47 @@ export function App() {
       return false;
     }
 
+    if (!options?.ignoreStatus && selectedStatus !== 'all' && task.status !== selectedStatus) {
+      return false;
+    }
+
+    if (!options?.ignorePriority && selectedPriority !== 'all' && task.priority !== selectedPriority) {
+      return false;
+    }
+
     if (!options?.ignoreSearch && normalizedSearchQuery && !getTaskSearchText(task).includes(normalizedSearchQuery)) {
       return false;
     }
 
     return true;
   }
+
+  const visibleCategories = useMemo(() => {
+    const categoryIds = new Set(
+      tasks
+        .filter((task) => matchesTask(task, { ignoreCategory: true }))
+        .map((task) => task.categoryId)
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    if (categoryIds.size === 0) {
+      return categories;
+    }
+
+    return categories.filter((category) => categoryIds.has(category.id));
+  }, [
+    categories,
+    tasks,
+    selectedWorkspaceId,
+    selectedFolderId,
+    selectedLane,
+    selectedStatus,
+    selectedPriority,
+    normalizedSearchQuery,
+    workspacesById,
+    foldersById,
+    categoriesById,
+  ]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => matchesTask(task));
@@ -161,6 +200,8 @@ export function App() {
     selectedFolderId,
     selectedLane,
     selectedCategoryId,
+    selectedStatus,
+    selectedPriority,
     normalizedSearchQuery,
     workspacesById,
     foldersById,
@@ -228,6 +269,8 @@ export function App() {
     selectedWorkspaceId,
     selectedFolderId,
     selectedCategoryId,
+    selectedStatus,
+    selectedPriority,
     normalizedSearchQuery,
     workspacesById,
     foldersById,
@@ -259,11 +302,40 @@ export function App() {
     workspaces,
     selectedLane,
     selectedCategoryId,
+    selectedStatus,
+    selectedPriority,
     normalizedSearchQuery,
     workspacesById,
     foldersById,
     categoriesById,
   ]);
+
+  const overviewTasks = useMemo(() => {
+    return tasks.filter((task) => matchesTask(task, { ignoreStatus: true, ignorePriority: true }));
+  }, [
+    tasks,
+    selectedWorkspaceId,
+    selectedFolderId,
+    selectedLane,
+    selectedCategoryId,
+    selectedStatus,
+    selectedPriority,
+    normalizedSearchQuery,
+    workspacesById,
+    foldersById,
+    categoriesById,
+  ]);
+
+  const overviewStats = useMemo(() => {
+    return {
+      selected: sortedTasks.length,
+      context: overviewTasks.length,
+      open: overviewTasks.filter((task) => task.status === 'open').length,
+      done: overviewTasks.filter((task) => task.status === 'done').length,
+      highPriority: overviewTasks.filter((task) => task.priority === 'hoch' || task.priority === 'kritisch').length,
+      withDueDate: overviewTasks.filter((task) => Boolean(task.dueDate)).length,
+    };
+  }, [overviewTasks, sortedTasks.length]);
 
   const currentWorkspaceName = useMemo(() => {
     if (!selectedWorkspaceId) {
@@ -278,6 +350,8 @@ export function App() {
     selectedFolderId !== null ||
     selectedCategoryId !== null ||
     selectedLane !== 'all' ||
+    selectedStatus !== 'all' ||
+    selectedPriority !== 'all' ||
     normalizedSearchQuery.length > 0;
 
   function resetAllFilters() {
@@ -286,6 +360,8 @@ export function App() {
     setSelectedFolderId(null);
     setSelectedCategoryId(null);
     setSelectedLane('all');
+    setSelectedStatus('all');
+    setSelectedPriority('all');
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -517,6 +593,34 @@ export function App() {
           </button>
         </form>
 
+        <section className="overview-grid" aria-label="Übersicht zur aktuellen Ansicht">
+          <article className="overview-card">
+            <span className="overview-card__label">Aktuelle Auswahl</span>
+            <strong className="overview-card__value">{overviewStats.selected}</strong>
+            <span className="overview-card__hint">nach allen aktiven Filtern</span>
+          </article>
+          <article className="overview-card">
+            <span className="overview-card__label">Offen</span>
+            <strong className="overview-card__value">{overviewStats.open}</strong>
+            <span className="overview-card__hint">im aktuellen Kontext</span>
+          </article>
+          <article className="overview-card">
+            <span className="overview-card__label">Erledigt</span>
+            <strong className="overview-card__value">{overviewStats.done}</strong>
+            <span className="overview-card__hint">im aktuellen Kontext</span>
+          </article>
+          <article className="overview-card">
+            <span className="overview-card__label">Hoch / Kritisch</span>
+            <strong className="overview-card__value">{overviewStats.highPriority}</strong>
+            <span className="overview-card__hint">im aktuellen Kontext</span>
+          </article>
+          <article className="overview-card">
+            <span className="overview-card__label">Mit Fälligkeit</span>
+            <strong className="overview-card__value">{overviewStats.withDueDate}</strong>
+            <span className="overview-card__hint">im aktuellen Kontext</span>
+          </article>
+        </section>
+
         <div className="filter-toolbar filter-toolbar--grid">
           <div className="filter-field filter-field--search">
             <label htmlFor="task-search">Suche</label>
@@ -546,6 +650,36 @@ export function App() {
           </div>
 
           <div className="filter-field">
+            <label htmlFor="status-filter">Status</label>
+            <select
+              id="status-filter"
+              value={selectedStatus}
+              onChange={(event) => setSelectedStatus(event.target.value as StatusFilterId)}
+            >
+              {statusOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="filter-field">
+            <label htmlFor="priority-filter">Priorität</label>
+            <select
+              id="priority-filter"
+              value={selectedPriority}
+              onChange={(event) => setSelectedPriority(event.target.value as PriorityFilterId)}
+            >
+              {priorityOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="filter-field">
             <label htmlFor="sort-filter">Sortierung</label>
             <select
               id="sort-filter"
@@ -567,6 +701,7 @@ export function App() {
 
         <div className="result-meta">
           <span className="badge">{sortedTasks.length} Aufgaben</span>
+          <span className="badge">Kontext: {overviewStats.context}</span>
           <span className="badge">Sortierung: {sortOptions.find((option) => option.id === selectedSort)?.label}</span>
           {selectedWorkspaceId && (
             <span className="badge">Workspace: {workspacesById.get(selectedWorkspaceId)?.name ?? '–'}</span>
@@ -579,6 +714,12 @@ export function App() {
           )}
           {selectedLane !== 'all' && (
             <span className="badge">Lane: {laneOptions.find((lane) => lane.id === selectedLane)?.label ?? selectedLane}</span>
+          )}
+          {selectedStatus !== 'all' && (
+            <span className="badge">Status: {statusOptions.find((option) => option.id === selectedStatus)?.label ?? selectedStatus}</span>
+          )}
+          {selectedPriority !== 'all' && (
+            <span className="badge">Priorität: {priorityOptions.find((option) => option.id === selectedPriority)?.label ?? selectedPriority}</span>
           )}
           {searchQuery.trim() && <span className="badge">Suche: {searchQuery.trim()}</span>}
           {hasActiveFilters && (

@@ -198,4 +198,20 @@ export async function registerTaskRoutes(app: FastifyInstance) {
 
     return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
   });
+
+  app.delete('/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const existing = db.prepare('SELECT id FROM tasks WHERE id = ?').get(id) as { id: string } | undefined;
+
+    if (!existing) {
+      return reply.code(404).send({ error: 'Task nicht gefunden' });
+    }
+
+    db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+
+    return {
+      ok: true,
+      deletedId: id,
+    };
+  });
 }

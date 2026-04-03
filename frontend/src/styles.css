@@ -16,13 +16,19 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
 button:disabled {
   opacity: 0.65;
   cursor: default;
+}
+
+textarea {
+  resize: vertical;
 }
 
 .app-shell {
@@ -56,7 +62,8 @@ button:disabled {
 }
 
 .nav-button,
-.ghost-button {
+.ghost-button,
+.primary-button {
   text-align: left;
   border: 1px solid #2d3745;
   border-radius: 10px;
@@ -68,6 +75,12 @@ button:disabled {
 
 .nav-button--active {
   background: #18212b;
+}
+
+.primary-button {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #eff6ff;
 }
 
 .workspace-dot {
@@ -129,11 +142,47 @@ button:disabled {
   padding: 14px;
 }
 
-.task-row {
+.task-card--editing {
+  border-color: #335c99;
+}
+
+.task-card-header {
   display: grid;
-  grid-template-columns: 24px 1fr;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
+}
+
+.task-check {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 6px;
+}
+
+.task-summary-button {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.task-action-button {
+  white-space: nowrap;
+}
+
+.task-action-button--danger {
+  border-color: #7f1d1d;
+  color: #fecaca;
 }
 
 .task-title {
@@ -148,6 +197,7 @@ button:disabled {
 .task-notes {
   margin: 8px 0 0;
   color: #9ca3af;
+  white-space: pre-wrap;
 }
 
 .meta-row {
@@ -188,6 +238,55 @@ button:disabled {
   border-color: #475569;
 }
 
+.task-editor {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #222b36;
+  display: grid;
+  gap: 14px;
+}
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field--full {
+  grid-column: 1 / -1;
+}
+
+.field span {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.field input,
+.field select,
+.field textarea {
+  border: 1px solid #2d3745;
+  border-radius: 10px;
+  background: #11161d;
+  color: #e5e7eb;
+  padding: 10px 12px;
+}
+
+.editor-help {
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .notice {
   border: 1px solid #2d3745;
   border-radius: 10px;
@@ -209,5 +308,22 @@ button:disabled {
 
   .content-header {
     flex-direction: column;
+  }
+
+  .task-card-header {
+    grid-template-columns: 28px 1fr;
+  }
+
+  .task-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field--full {
+    grid-column: auto;
   }
 }

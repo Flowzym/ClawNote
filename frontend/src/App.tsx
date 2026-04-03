@@ -13,6 +13,14 @@ const laneOptions: Array<{ id: Lane | 'all'; label: string }> = [
   { id: 'done', label: 'Erledigt' },
 ];
 
+const sortOptions = [
+  { id: 'createdDesc', label: 'Neueste zuerst' },
+  { id: 'updatedDesc', label: 'Zuletzt geändert' },
+  { id: 'dueDateAsc', label: 'Fälligkeit zuerst' },
+] as const;
+
+type SortOptionId = (typeof sortOptions)[number]['id'];
+
 export function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -25,9 +33,12 @@ export function App() {
   const [editDraft, setEditDraft] = useState<TaskEditDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedLane, setSelectedLane] = useState<Lane | 'all'>('all');
+  const [selectedSort, setSelectedSort] = useState<SortOptionId>('createdDesc');
 
   useEffect(() => {
     void loadInitialData();
@@ -56,6 +67,20 @@ export function App() {
     }
   }
 
+  const workspacesById = useMemo(() => {
+    return new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+  }, [workspaces]);
+
+  const foldersById = useMemo(() => {
+    return new Map(folders.map((folder) => [folder.id, folder]));
+  }, [folders]);
+
+  const categoriesById = useMemo(() => {
+    return new Map(categories.map((category) => [category.id, category]));
+  }, [categories]);
+
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
   const visibleFolders = useMemo(() => {
     if (!selectedWorkspaceId) {
       return folders;
@@ -64,20 +89,181 @@ export function App() {
     return folders.filter((folder) => folder.workspaceId === selectedWorkspaceId);
   }, [folders, selectedWorkspaceId]);
 
+  const visibleCategories = useMemo(() => {
+    const categoryIds = new Set(
+      tasks
+        .filter((task) => !selectedWorkspaceId || task.workspaceId === selectedWorkspaceId)
+        .filter((task) => !selectedFolderId || task.folderId === selectedFolderId)
+        .map((task) => task.categoryId)
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    if (categoryIds.size === 0) {
+      return categories;
+    }
+
+    return categories.filter((category) => categoryIds.has(category.id));
+  }, [categories, tasks, selectedWorkspaceId, selectedFolderId]);
+
+  function getTaskSearchText(task: Task): string {
+    return [
+      task.title,
+      task.notes,
+      task.rawInput,
+      task.priority,
+      task.lane,
+      workspacesById.get(task.workspaceId)?.name ?? '',
+      task.folderId ? foldersById.get(task.folderId)?.name ?? '' : '',
+      task.categoryId ? categoriesById.get(task.categoryId)?.name ?? '' : '',
+    ]
+      .join(' ')
+      .toLowerCase();
+  }
+
+  function matchesTask(
+    task: Task,
+    options?: {
+      ignoreWorkspace?: boolean;
+      ignoreFolder?: boolean;
+      ignoreLane?: boolean;
+      ignoreCategory?: boolean;
+      ignoreSearch?: boolean;
+    },
+  ): boolean {
+    if (!options?.ignoreWorkspace && selectedWorkspaceId && task.workspaceId !== selectedWorkspaceId) {
+      return false;
+    }
+
+    if (!options?.ignoreFolder && selectedFolderId && task.folderId !== selectedFolderId) {
+      return false;
+    }
+
+    if (!options?.ignoreLane && selectedLane !== 'all' && task.lane !== selectedLane) {
+      return false;
+    }
+
+    if (!options?.ignoreCategory && selectedCategoryId && task.categoryId !== selectedCategoryId) {
+      return false;
+    }
+
+    if (!options?.ignoreSearch && normalizedSearchQuery && !getTaskSearchText(task).includes(normalizedSearchQuery)) {
+      return false;
+    }
+
+    return true;
+  }
+
   const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
-      if (selectedWorkspaceId && task.workspaceId !== selectedWorkspaceId) {
-        return false;
+    return tasks.filter((task) => matchesTask(task));
+  }, [
+    tasks,
+    selectedWorkspaceId,
+    selectedFolderId,
+    selectedLane,
+    selectedCategoryId,
+    normalizedSearchQuery,
+    workspacesById,
+    foldersById,
+    categoriesById,
+  ]);
+
+  const sortedTasks = useMemo(() => {
+    const nextTasks = [...filteredTasks];
+
+    function getTime(value: string | null) {
+      if (!value) {
+        return 0;
       }
-      if (selectedFolderId && task.folderId !== selectedFolderId) {
-        return false;
+
+      const timestamp = Date.parse(value);
+      return Number.isNaN(timestamp) ? 0 : timestamp;
+    }
+
+    nextTasks.sort((left, right) => {
+      if (selectedSort === 'updatedDesc') {
+        return getTime(right.updatedAt) - getTime(left.updatedAt);
       }
-      if (selectedLane !== 'all' && task.lane !== selectedLane) {
-        return false;
+
+      if (selectedSort === 'dueDateAsc') {
+        const leftDue = left.dueDate ? getTime(left.dueDate) : Number.POSITIVE_INFINITY;
+        const rightDue = right.dueDate ? getTime(right.dueDate) : Number.POSITIVE_INFINITY;
+
+        if (leftDue !== rightDue) {
+          return leftDue - rightDue;
+        }
+
+        return getTime(right.createdAt) - getTime(left.createdAt);
       }
-      return true;
+
+      return getTime(right.createdAt) - getTime(left.createdAt);
     });
-  }, [tasks, selectedWorkspaceId, selectedFolderId, selectedLane]);
+
+    return nextTasks;
+  }, [filteredTasks, selectedSort]);
+
+  const laneCounts = useMemo(() => {
+    const counts = new Map<Lane | 'all', number>();
+
+    counts.set(
+      'all',
+      tasks.filter((task) => matchesTask(task, { ignoreLane: true })).length,
+    );
+
+    for (const lane of laneOptions) {
+      if (lane.id === 'all') {
+        continue;
+      }
+
+      counts.set(
+        lane.id,
+        tasks.filter(
+          (task) => task.lane === lane.id && matchesTask(task, { ignoreLane: true }),
+        ).length,
+      );
+    }
+
+    return counts;
+  }, [
+    tasks,
+    selectedWorkspaceId,
+    selectedFolderId,
+    selectedCategoryId,
+    normalizedSearchQuery,
+    workspacesById,
+    foldersById,
+    categoriesById,
+  ]);
+
+  const workspaceCounts = useMemo(() => {
+    const counts = new Map<string | 'all', number>();
+
+    counts.set(
+      'all',
+      tasks.filter((task) => matchesTask(task, { ignoreWorkspace: true, ignoreFolder: true })).length,
+    );
+
+    for (const workspace of workspaces) {
+      counts.set(
+        workspace.id,
+        tasks.filter(
+          (task) =>
+            task.workspaceId === workspace.id &&
+            matchesTask(task, { ignoreWorkspace: true, ignoreFolder: true }),
+        ).length,
+      );
+    }
+
+    return counts;
+  }, [
+    tasks,
+    workspaces,
+    selectedLane,
+    selectedCategoryId,
+    normalizedSearchQuery,
+    workspacesById,
+    foldersById,
+    categoriesById,
+  ]);
 
   const currentWorkspaceName = useMemo(() => {
     if (!selectedWorkspaceId) {
@@ -86,6 +272,21 @@ export function App() {
 
     return workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.name ?? 'Aufgaben';
   }, [selectedLane, selectedWorkspaceId, workspaces]);
+
+  const hasActiveFilters =
+    selectedWorkspaceId !== null ||
+    selectedFolderId !== null ||
+    selectedCategoryId !== null ||
+    selectedLane !== 'all' ||
+    normalizedSearchQuery.length > 0;
+
+  function resetAllFilters() {
+    setSearchQuery('');
+    setSelectedWorkspaceId(null);
+    setSelectedFolderId(null);
+    setSelectedCategoryId(null);
+    setSelectedLane('all');
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -223,7 +424,10 @@ export function App() {
               onClick={() => setSelectedLane(lane.id)}
               type="button"
             >
-              {lane.label}
+              <span className="nav-button__content">
+                <span>{lane.label}</span>
+                <span className="nav-count">{laneCounts.get(lane.id) ?? 0}</span>
+              </span>
             </button>
           ))}
         </nav>
@@ -238,7 +442,10 @@ export function App() {
             }}
             type="button"
           >
-            Alle Workspaces
+            <span className="nav-button__content">
+              <span>Alle Workspaces</span>
+              <span className="nav-count">{workspaceCounts.get('all') ?? 0}</span>
+            </span>
           </button>
 
           {workspaces.map((workspace) => (
@@ -251,8 +458,13 @@ export function App() {
               }}
               type="button"
             >
-              <span className="workspace-dot" style={{ background: workspace.color }} />
-              {workspace.name}
+              <span className="nav-button__content">
+                <span className="workspace-label">
+                  <span className="workspace-dot" style={{ background: workspace.color }} />
+                  {workspace.name}
+                </span>
+                <span className="nav-count">{workspaceCounts.get(workspace.id) ?? 0}</span>
+              </span>
             </button>
           ))}
         </section>
@@ -305,12 +517,83 @@ export function App() {
           </button>
         </form>
 
+        <div className="filter-toolbar filter-toolbar--grid">
+          <div className="filter-field filter-field--search">
+            <label htmlFor="task-search">Suche</label>
+            <input
+              id="task-search"
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Titel, Notes, Workspace, Ordner, Kategorie …"
+            />
+          </div>
+
+          <div className="filter-field">
+            <label htmlFor="category-filter">Kategorie</label>
+            <select
+              id="category-filter"
+              value={selectedCategoryId ?? ''}
+              onChange={(event) => setSelectedCategoryId(event.target.value || null)}
+            >
+              <option value="">Alle Kategorien</option>
+              {visibleCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="filter-field">
+            <label htmlFor="sort-filter">Sortierung</label>
+            <select
+              id="sort-filter"
+              value={selectedSort}
+              onChange={(event) => setSelectedSort(event.target.value as SortOptionId)}
+            >
+              {sortOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button className="ghost-button" type="button" onClick={resetAllFilters}>
+            Alle Filter zurücksetzen
+          </button>
+        </div>
+
+        <div className="result-meta">
+          <span className="badge">{sortedTasks.length} Aufgaben</span>
+          <span className="badge">Sortierung: {sortOptions.find((option) => option.id === selectedSort)?.label}</span>
+          {selectedWorkspaceId && (
+            <span className="badge">Workspace: {workspacesById.get(selectedWorkspaceId)?.name ?? '–'}</span>
+          )}
+          {selectedFolderId && (
+            <span className="badge">Ordner: {foldersById.get(selectedFolderId)?.name ?? '–'}</span>
+          )}
+          {selectedCategoryId && (
+            <span className="badge">Kategorie: {categoriesById.get(selectedCategoryId)?.name ?? '–'}</span>
+          )}
+          {selectedLane !== 'all' && (
+            <span className="badge">Lane: {laneOptions.find((lane) => lane.id === selectedLane)?.label ?? selectedLane}</span>
+          )}
+          {searchQuery.trim() && <span className="badge">Suche: {searchQuery.trim()}</span>}
+          {hasActiveFilters && (
+            <button className="ghost-button ghost-button--small" type="button" onClick={resetAllFilters}>
+              Filter löschen
+            </button>
+          )}
+        </div>
+
         {error && <div className="notice notice--error">{error}</div>}
         {loading && <div className="notice">Lade Daten …</div>}
 
         {!loading && (
           <section className="task-list">
-            {filteredTasks.map((task) => {
+            {sortedTasks.map((task) => {
               const workspace = workspaces.find((item) => item.id === task.workspaceId);
               const folder = folders.find((item) => item.id === task.folderId);
               const category = categories.find((item) => item.id === task.categoryId);
@@ -339,7 +622,7 @@ export function App() {
               );
             })}
 
-            {filteredTasks.length === 0 && <div className="notice">Keine Aufgaben in dieser Ansicht.</div>}
+            {sortedTasks.length === 0 && <div className="notice">Keine Aufgaben in dieser Ansicht.</div>}
           </section>
         )}
       </section>

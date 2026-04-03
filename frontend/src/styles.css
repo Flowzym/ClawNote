@@ -83,6 +83,37 @@ textarea {
   color: #eff6ff;
 }
 
+.ghost-button--small {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.nav-button__content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workspace-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.nav-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #314155;
+  background: #18212b;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
 .workspace-dot {
   display: inline-block;
   width: 10px;
@@ -128,6 +159,44 @@ textarea {
 .ghost-button {
   background: #1b2430;
   color: #e5e7eb;
+}
+
+.filter-toolbar {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.filter-toolbar--grid {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr) auto;
+}
+
+.filter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-field label {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.filter-field input,
+.filter-field select {
+  border: 1px solid #2d3745;
+  border-radius: 10px;
+  background: #0d1218;
+  color: #e5e7eb;
+  padding: 12px 14px;
+}
+
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
 .task-list {
@@ -301,6 +370,12 @@ textarea {
   color: #fecaca;
 }
 
+@media (max-width: 1100px) {
+  .filter-toolbar--grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -308,6 +383,10 @@ textarea {
 
   .content-header {
     flex-direction: column;
+  }
+
+  .filter-toolbar--grid {
+    grid-template-columns: 1fr;
   }
 
   .task-card-header {

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createTask, deleteTask, getCategories, getFolders, getTasks, getWorkspaces, structureTasks, toggleTask, updateTask } from './api';
-import { AiSuggestionCard } from './components/AiSuggestionCard';
+import { AiSuggestionCard, type AiSuggestionValidation } from './components/AiSuggestionCard';
 import { TaskCard } from './components/TaskCard';
 import { createTaskEditDraft, type TaskEditDraft } from './components/TaskEditor';
 import type { AiStructureTaskSuggestion, Category, Folder, Lane, Task, Workspace } from './types';
@@ -45,6 +45,27 @@ type LocalAiSuggestion = AiStructureTaskSuggestion & {
 
 type SuggestionPatch = Partial<Omit<LocalAiSuggestion, 'suggestionId'>>;
 
+type UndoState = {
+  taskIds: string[];
+};
+
+function validateSuggestion(suggestion: LocalAiSuggestion, folders: Folder[]): AiSuggestionValidation {
+  const title = suggestion.title.trim();
+  const validFolder = suggestion.folderIdSuggestion
+    ? folders.some(
+        (folder) =>
+          folder.id === suggestion.folderIdSuggestion &&
+          folder.workspaceId === suggestion.workspaceIdSuggestion,
+      )
+    : true;
+
+  return {
+    isValid: title.length > 0,
+    titleError: title.length > 0 ? null : 'Titel darf nicht leer sein.',
+    folderHint: !validFolder ? 'Ordner passt nicht mehr zum Workspace und wird beim Übernehmen entfernt.' : null,
+  };
+}
+
 export function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -58,6 +79,8 @@ export function App() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<TaskEditDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [undoState, setUndoState] = useState<UndoState | null>(null);
   const [input, setInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [aiSourceInput, setAiSourceInput] = useState('');
@@ -73,6 +96,18 @@ export function App() {
   useEffect(() => {
     void loadInitialData();
   }, []);
+
+  useEffect(() => {
+    if (!successMessage || undoState) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessMessage(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [successMessage, undoState]);
 
   async function loadInitialData() {
     try {
@@ -101,6 +136,19 @@ export function App() {
   const foldersById = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
+  const suggestionValidations = useMemo(
+    () =>
+      new Map(
+        aiSuggestions.map((suggestion) => [suggestion.suggestionId, validateSuggestion(suggestion, folders)]),
+      ),
+    [aiSuggestions, folders],
+  );
+
+  const invalidSuggestionCount = useMemo(
+    () => Array.from(suggestionValidations.values()).filter((validation) => !validation.isValid).length,
+    [suggestionValidations],
+  );
 
   const visibleFolders = useMemo(() => {
     if (!selectedWorkspaceId) {
@@ -411,6 +459,26 @@ export function App() {
     );
   }
 
+  async function undoLastApply() {
+    if (!undoState) {
+      return;
+    }
+
+    try {
+      setApplyingSuggestions(true);
+      setError(null);
+
+      await Promise.all(undoState.taskIds.map((taskId) => deleteTask(taskId)));
+      setTasks((current) => current.filter((task) => !undoState.taskIds.includes(task.id)));
+      setUndoState(null);
+      setSuccessMessage('Übernahme rückgängig gemacht.');
+    } catch (undoError) {
+      setError(undoError instanceof Error ? undoError.message : 'Rückgängig konnte nicht ausgeführt werden');
+    } finally {
+      setApplyingSuggestions(false);
+    }
+  }
+
   async function createTaskFromSuggestion(suggestion: LocalAiSuggestion): Promise<Task> {
     const title = suggestion.title.trim();
 
@@ -418,12 +486,22 @@ export function App() {
       throw new Error('Jeder Vorschlag braucht einen Titel');
     }
 
+    const validFolderId = suggestion.folderIdSuggestion
+      ? folders.some(
+          (folder) =>
+            folder.id === suggestion.folderIdSuggestion &&
+            folder.workspaceId === suggestion.workspaceIdSuggestion,
+        )
+        ? suggestion.folderIdSuggestion
+        : null
+      : null;
+
     return createTask({
       rawInput: aiSourceInput || title,
       title,
       notes: suggestion.notes.trim(),
       workspaceId: suggestion.workspaceIdSuggestion,
-      folderId: suggestion.folderIdSuggestion,
+      folderId: validFolderId,
       categoryId: suggestion.categoryIdSuggestion,
       priority: suggestion.priority,
       lane: suggestion.lane === 'done' ? 'inbox' : suggestion.lane,
@@ -480,6 +558,8 @@ export function App() {
     try {
       setStructuring(true);
       setError(null);
+      setSuccessMessage(null);
+      setUndoState(null);
 
       const response = await structureTasks({
         rawInput,
@@ -509,6 +589,12 @@ export function App() {
       return;
     }
 
+    const validation = suggestionValidations.get(suggestionId);
+    if (validation && !validation.isValid) {
+      setError(validation.titleError ?? 'Vorschlag ist noch nicht gültig');
+      return;
+    }
+
     try {
       setApplyingSuggestions(true);
       setError(null);
@@ -516,6 +602,8 @@ export function App() {
       const createdTask = await createTaskFromSuggestion(suggestion);
       setTasks((current) => [createdTask, ...current]);
       removeAiSuggestion(suggestionId);
+      setSuccessMessage('Vorschlag übernommen.');
+      setUndoState({ taskIds: [createdTask.id] });
     } catch (applyError) {
       setError(applyError instanceof Error ? applyError.message : 'Vorschlag konnte nicht übernommen werden');
     } finally {
@@ -525,6 +613,11 @@ export function App() {
 
   async function handleApplyAllSuggestions() {
     if (aiSuggestions.length === 0) {
+      return;
+    }
+
+    if (invalidSuggestionCount > 0) {
+      setError(`${invalidSuggestionCount} Vorschlag/Vorschläge brauchen noch einen gültigen Titel.`);
       return;
     }
 
@@ -542,6 +635,8 @@ export function App() {
       setTasks((current) => [...createdTasks.reverse(), ...current]);
       clearAiSuggestions();
       setInput('');
+      setSuccessMessage(`${createdTasks.length} Vorschlag/Vorschläge übernommen.`);
+      setUndoState({ taskIds: createdTasks.map((task) => task.id) });
     } catch (applyError) {
       setError(applyError instanceof Error ? applyError.message : 'Vorschläge konnten nicht übernommen werden');
     } finally {
@@ -747,6 +842,19 @@ export function App() {
           </div>
         </form>
 
+        {successMessage && (
+          <div className="notice notice--success">
+            <div className="notice__content">
+              <span>{successMessage}</span>
+              {undoState && (
+                <button className="ghost-button ghost-button--small" disabled={applyingSuggestions} onClick={() => void undoLastApply()} type="button">
+                  Rückgängig
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {aiSuggestions.length > 0 && (
           <section className="ai-panel">
             <div className="ai-panel__header">
@@ -758,13 +866,14 @@ export function App() {
                 <button className="ghost-button ghost-button--small" disabled={applyingSuggestions} onClick={clearAiSuggestions} type="button">
                   Verwerfen
                 </button>
-                <button className="primary-button ghost-button--small" disabled={applyingSuggestions} onClick={() => void handleApplyAllSuggestions()} type="button">
+                <button className="primary-button ghost-button--small" disabled={applyingSuggestions || invalidSuggestionCount > 0} onClick={() => void handleApplyAllSuggestions()} type="button">
                   {applyingSuggestions ? 'Übernehme …' : `Alle übernehmen (${aiSuggestions.length})`}
                 </button>
               </div>
             </div>
 
             <div className="ai-panel__source">Quelle: {aiSourceInput}</div>
+            {invalidSuggestionCount > 0 && <div className="ai-panel__validation">Mindestens ein Vorschlag braucht noch einen gültigen Titel.</div>}
 
             <div className="ai-suggestion-list">
               {aiSuggestions.map((suggestion) => (
@@ -774,6 +883,7 @@ export function App() {
                   workspaces={workspaces}
                   folders={folders}
                   categories={categories}
+                  validation={suggestionValidations.get(suggestion.suggestionId) ?? { isValid: true, titleError: null, folderHint: null }}
                   isApplying={applyingSuggestions}
                   onChange={(patch) => updateAiSuggestion(suggestion.suggestionId, patch)}
                   onRemove={() => removeAiSuggestion(suggestion.suggestionId)}

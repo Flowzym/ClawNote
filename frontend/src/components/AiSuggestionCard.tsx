@@ -1,7 +1,13 @@
 import type { AiStructureTaskSuggestion, Category, Folder, Lane, Priority, Workspace } from '../types';
 
-type EditableSuggestion = AiStructureTaskSuggestion & { suggestionId: string };
+export type EditableSuggestion = AiStructureTaskSuggestion & { suggestionId: string };
 type SuggestionPatch = Partial<Omit<EditableSuggestion, 'suggestionId'>>;
+
+export type AiSuggestionValidation = {
+  isValid: boolean;
+  titleError: string | null;
+  folderHint: string | null;
+};
 
 const suggestionLaneOptions: Array<{ id: Exclude<Lane, 'done'>; label: string }> = [
   { id: 'inbox', label: 'Inbox' },
@@ -17,17 +23,18 @@ type Props = {
   workspaces: Workspace[];
   folders: Folder[];
   categories: Category[];
+  validation: AiSuggestionValidation;
   isApplying: boolean;
   onChange: (patch: SuggestionPatch) => void;
   onRemove: () => void;
   onApply: () => void;
 };
 
-export function AiSuggestionCard({ suggestion, workspaces, folders, categories, isApplying, onChange, onRemove, onApply }: Props) {
+export function AiSuggestionCard({ suggestion, workspaces, folders, categories, validation, isApplying, onChange, onRemove, onApply }: Props) {
   const suggestionFolders = folders.filter((folder) => folder.workspaceId === suggestion.workspaceIdSuggestion);
 
   return (
-    <article className="ai-suggestion-card">
+    <article className={`ai-suggestion-card ${!validation.isValid ? 'ai-suggestion-card--invalid' : ''}`}>
       <div className="ai-suggestion-card__header">
         <div className="ai-suggestion-card__meta">
           <span className="badge">Confidence: {Math.round(suggestion.confidence * 100)}%</span>
@@ -37,14 +44,15 @@ export function AiSuggestionCard({ suggestion, workspaces, folders, categories, 
         </div>
         <div className="ai-suggestion-card__actions">
           <button className="ghost-button ghost-button--small" disabled={isApplying} onClick={onRemove} type="button">Entfernen</button>
-          <button className="primary-button ghost-button--small" disabled={isApplying} onClick={onApply} type="button">Übernehmen</button>
+          <button className="primary-button ghost-button--small" disabled={isApplying || !validation.isValid} onClick={onApply} type="button">Übernehmen</button>
         </div>
       </div>
 
       <div className="ai-suggestion-card__editor editor-grid">
         <label className="field field--full">
           <span>Titel</span>
-          <input type="text" value={suggestion.title} onChange={(event) => onChange({ title: event.target.value })} placeholder="Titel" />
+          <input className={validation.titleError ? 'field__input--invalid' : undefined} type="text" value={suggestion.title} onChange={(event) => onChange({ title: event.target.value })} placeholder="Titel" />
+          {validation.titleError && <small className="field-hint field-hint--error">{validation.titleError}</small>}
         </label>
 
         <label className="field">
@@ -72,6 +80,7 @@ export function AiSuggestionCard({ suggestion, workspaces, folders, categories, 
               <option key={folder.id} value={folder.id}>{folder.name}</option>
             ))}
           </select>
+          {validation.folderHint && <small className="field-hint">{validation.folderHint}</small>}
         </label>
 
         <label className="field">

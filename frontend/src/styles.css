@@ -196,6 +196,16 @@ textarea {
   word-break: break-word;
 }
 
+.ai-panel__validation {
+  margin-bottom: 12px;
+  border: 1px solid #7c5c1b;
+  border-radius: 10px;
+  background: #19140b;
+  color: #fcd34d;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
 .ai-suggestion-list {
   display: grid;
   gap: 10px;
@@ -208,6 +218,10 @@ textarea {
   border-radius: 12px;
   background: #11161d;
   padding: 14px;
+}
+
+.ai-suggestion-card--invalid {
+  border-color: #7f1d1d;
 }
 
 .ai-suggestion-card__header {
@@ -465,6 +479,19 @@ textarea {
   padding: 10px 12px;
 }
 
+.field__input--invalid {
+  border-color: #b91c1c !important;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.field-hint--error {
+  color: #fca5a5;
+}
+
 .editor-help {
   color: #9ca3af;
   font-size: 13px;
@@ -488,6 +515,19 @@ textarea {
 .notice--error {
   border-color: #7f1d1d;
   color: #fecaca;
+}
+
+.notice--success {
+  border-color: #1d4ed8;
+  color: #dbeafe;
+}
+
+.notice__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 1400px) {

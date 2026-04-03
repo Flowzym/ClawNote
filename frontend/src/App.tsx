@@ -25,6 +25,7 @@ const priorityOptions = [
   { id: 'mittel', label: 'Mittel' },
   { id: 'hoch', label: 'Hoch' },
   { id: 'kritisch', label: 'Kritisch' },
+  { id: 'highPlus', label: 'Hoch / Kritisch' },
 ] as const;
 
 const sortOptions = [
@@ -85,18 +86,9 @@ export function App() {
     }
   }
 
-  const workspacesById = useMemo(() => {
-    return new Map(workspaces.map((workspace) => [workspace.id, workspace]));
-  }, [workspaces]);
-
-  const foldersById = useMemo(() => {
-    return new Map(folders.map((folder) => [folder.id, folder]));
-  }, [folders]);
-
-  const categoriesById = useMemo(() => {
-    return new Map(categories.map((category) => [category.id, category]));
-  }, [categories]);
-
+  const workspacesById = useMemo(() => new Map(workspaces.map((workspace) => [workspace.id, workspace])), [workspaces]);
+  const foldersById = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
+  const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
   const visibleFolders = useMemo(() => {
@@ -154,8 +146,14 @@ export function App() {
       return false;
     }
 
-    if (!options?.ignorePriority && selectedPriority !== 'all' && task.priority !== selectedPriority) {
-      return false;
+    if (!options?.ignorePriority && selectedPriority !== 'all') {
+      if (selectedPriority === 'highPlus') {
+        if (task.priority !== 'hoch' && task.priority !== 'kritisch') {
+          return false;
+        }
+      } else if (task.priority !== selectedPriority) {
+        return false;
+      }
     }
 
     if (!options?.ignoreSearch && normalizedSearchQuery && !getTaskSearchText(task).includes(normalizedSearchQuery)) {
@@ -192,9 +190,7 @@ export function App() {
     categoriesById,
   ]);
 
-  const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => matchesTask(task));
-  }, [
+  const filteredTasks = useMemo(() => tasks.filter((task) => matchesTask(task)), [
     tasks,
     selectedWorkspaceId,
     selectedFolderId,
@@ -244,11 +240,7 @@ export function App() {
 
   const laneCounts = useMemo(() => {
     const counts = new Map<Lane | 'all', number>();
-
-    counts.set(
-      'all',
-      tasks.filter((task) => matchesTask(task, { ignoreLane: true })).length,
-    );
+    counts.set('all', tasks.filter((task) => matchesTask(task, { ignoreLane: true })).length);
 
     for (const lane of laneOptions) {
       if (lane.id === 'all') {
@@ -257,9 +249,7 @@ export function App() {
 
       counts.set(
         lane.id,
-        tasks.filter(
-          (task) => task.lane === lane.id && matchesTask(task, { ignoreLane: true }),
-        ).length,
+        tasks.filter((task) => task.lane === lane.id && matchesTask(task, { ignoreLane: true })).length,
       );
     }
 
@@ -279,19 +269,13 @@ export function App() {
 
   const workspaceCounts = useMemo(() => {
     const counts = new Map<string | 'all', number>();
-
-    counts.set(
-      'all',
-      tasks.filter((task) => matchesTask(task, { ignoreWorkspace: true, ignoreFolder: true })).length,
-    );
+    counts.set('all', tasks.filter((task) => matchesTask(task, { ignoreWorkspace: true, ignoreFolder: true })).length);
 
     for (const workspace of workspaces) {
       counts.set(
         workspace.id,
         tasks.filter(
-          (task) =>
-            task.workspaceId === workspace.id &&
-            matchesTask(task, { ignoreWorkspace: true, ignoreFolder: true }),
+          (task) => task.workspaceId === workspace.id && matchesTask(task, { ignoreWorkspace: true, ignoreFolder: true }),
         ).length,
       );
     }
@@ -310,9 +294,33 @@ export function App() {
     categoriesById,
   ]);
 
-  const overviewTasks = useMemo(() => {
-    return tasks.filter((task) => matchesTask(task, { ignoreStatus: true, ignorePriority: true }));
+  const folderCounts = useMemo(() => {
+    const counts = new Map<string | 'all', number>();
+    counts.set('all', tasks.filter((task) => matchesTask(task, { ignoreFolder: true })).length);
+
+    for (const folder of visibleFolders) {
+      counts.set(
+        folder.id,
+        tasks.filter((task) => task.folderId === folder.id && matchesTask(task, { ignoreFolder: true })).length,
+      );
+    }
+
+    return counts;
   }, [
+    tasks,
+    visibleFolders,
+    selectedWorkspaceId,
+    selectedLane,
+    selectedCategoryId,
+    selectedStatus,
+    selectedPriority,
+    normalizedSearchQuery,
+    workspacesById,
+    foldersById,
+    categoriesById,
+  ]);
+
+  const overviewTasks = useMemo(() => tasks.filter((task) => matchesTask(task, { ignoreStatus: true, ignorePriority: true })), [
     tasks,
     selectedWorkspaceId,
     selectedFolderId,
@@ -326,16 +334,17 @@ export function App() {
     categoriesById,
   ]);
 
-  const overviewStats = useMemo(() => {
-    return {
+  const overviewStats = useMemo(
+    () => ({
       selected: sortedTasks.length,
       context: overviewTasks.length,
       open: overviewTasks.filter((task) => task.status === 'open').length,
       done: overviewTasks.filter((task) => task.status === 'done').length,
       highPriority: overviewTasks.filter((task) => task.priority === 'hoch' || task.priority === 'kritisch').length,
       withDueDate: overviewTasks.filter((task) => Boolean(task.dueDate)).length,
-    };
-  }, [overviewTasks, sortedTasks.length]);
+    }),
+    [overviewTasks, sortedTasks.length],
+  );
 
   const currentWorkspaceName = useMemo(() => {
     if (!selectedWorkspaceId) {
@@ -362,6 +371,12 @@ export function App() {
     setSelectedLane('all');
     setSelectedStatus('all');
     setSelectedPriority('all');
+  }
+
+  function resetOverviewQuickFilters() {
+    setSelectedStatus('all');
+    setSelectedPriority('all');
+    setSelectedSort('createdDesc');
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -405,9 +420,7 @@ export function App() {
   async function handleToggle(taskId: string) {
     try {
       setError(null);
-
       const updatedTask = await toggleTask(taskId);
-
       setTasks((current) => current.map((task) => (task.id === taskId ? updatedTask : task)));
 
       if (editingTaskId === taskId) {
@@ -435,7 +448,6 @@ export function App() {
     }
 
     const title = editDraft.title.trim();
-
     if (!title) {
       setError('Titel ist erforderlich');
       return;
@@ -475,7 +487,6 @@ export function App() {
     try {
       setError(null);
       await deleteTask(task.id);
-
       setTasks((current) => current.filter((item) => item.id !== task.id));
 
       if (editingTaskId === task.id) {
@@ -552,7 +563,10 @@ export function App() {
             onClick={() => setSelectedFolderId(null)}
             type="button"
           >
-            Alle Ordner
+            <span className="nav-button__content">
+              <span>Alle Ordner</span>
+              <span className="nav-count">{folderCounts.get('all') ?? 0}</span>
+            </span>
           </button>
 
           {visibleFolders.map((folder) => (
@@ -562,7 +576,10 @@ export function App() {
               onClick={() => setSelectedFolderId(folder.id)}
               type="button"
             >
-              {folder.name}
+              <span className="nav-button__content">
+                <span>{folder.name}</span>
+                <span className="nav-count">{folderCounts.get(folder.id) ?? 0}</span>
+              </span>
             </button>
           ))}
         </section>
@@ -594,31 +611,47 @@ export function App() {
         </form>
 
         <section className="overview-grid" aria-label="Übersicht zur aktuellen Ansicht">
-          <article className="overview-card">
+          <button type="button" className="overview-card overview-card--button" onClick={resetOverviewQuickFilters}>
             <span className="overview-card__label">Aktuelle Auswahl</span>
             <strong className="overview-card__value">{overviewStats.selected}</strong>
-            <span className="overview-card__hint">nach allen aktiven Filtern</span>
-          </article>
-          <article className="overview-card">
+            <span className="overview-card__hint">setzt Schnellfilter zurück</span>
+          </button>
+          <button
+            type="button"
+            className={`overview-card overview-card--button ${selectedStatus === 'open' ? 'overview-card--active' : ''}`}
+            onClick={() => setSelectedStatus((current) => (current === 'open' ? 'all' : 'open'))}
+          >
             <span className="overview-card__label">Offen</span>
             <strong className="overview-card__value">{overviewStats.open}</strong>
-            <span className="overview-card__hint">im aktuellen Kontext</span>
-          </article>
-          <article className="overview-card">
+            <span className="overview-card__hint">setzt Statusfilter</span>
+          </button>
+          <button
+            type="button"
+            className={`overview-card overview-card--button ${selectedStatus === 'done' ? 'overview-card--active' : ''}`}
+            onClick={() => setSelectedStatus((current) => (current === 'done' ? 'all' : 'done'))}
+          >
             <span className="overview-card__label">Erledigt</span>
             <strong className="overview-card__value">{overviewStats.done}</strong>
-            <span className="overview-card__hint">im aktuellen Kontext</span>
-          </article>
-          <article className="overview-card">
+            <span className="overview-card__hint">setzt Statusfilter</span>
+          </button>
+          <button
+            type="button"
+            className={`overview-card overview-card--button ${selectedPriority === 'highPlus' ? 'overview-card--active' : ''}`}
+            onClick={() => setSelectedPriority((current) => (current === 'highPlus' ? 'all' : 'highPlus'))}
+          >
             <span className="overview-card__label">Hoch / Kritisch</span>
             <strong className="overview-card__value">{overviewStats.highPriority}</strong>
-            <span className="overview-card__hint">im aktuellen Kontext</span>
-          </article>
-          <article className="overview-card">
+            <span className="overview-card__hint">setzt Prioritätsfilter</span>
+          </button>
+          <button
+            type="button"
+            className={`overview-card overview-card--button ${selectedSort === 'dueDateAsc' ? 'overview-card--active' : ''}`}
+            onClick={() => setSelectedSort((current) => (current === 'dueDateAsc' ? 'createdDesc' : 'dueDateAsc'))}
+          >
             <span className="overview-card__label">Mit Fälligkeit</span>
             <strong className="overview-card__value">{overviewStats.withDueDate}</strong>
-            <span className="overview-card__hint">im aktuellen Kontext</span>
-          </article>
+            <span className="overview-card__hint">sortiert nach Fälligkeit</span>
+          </button>
         </section>
 
         <div className="filter-toolbar filter-toolbar--grid">
@@ -703,24 +736,12 @@ export function App() {
           <span className="badge">{sortedTasks.length} Aufgaben</span>
           <span className="badge">Kontext: {overviewStats.context}</span>
           <span className="badge">Sortierung: {sortOptions.find((option) => option.id === selectedSort)?.label}</span>
-          {selectedWorkspaceId && (
-            <span className="badge">Workspace: {workspacesById.get(selectedWorkspaceId)?.name ?? '–'}</span>
-          )}
-          {selectedFolderId && (
-            <span className="badge">Ordner: {foldersById.get(selectedFolderId)?.name ?? '–'}</span>
-          )}
-          {selectedCategoryId && (
-            <span className="badge">Kategorie: {categoriesById.get(selectedCategoryId)?.name ?? '–'}</span>
-          )}
-          {selectedLane !== 'all' && (
-            <span className="badge">Lane: {laneOptions.find((lane) => lane.id === selectedLane)?.label ?? selectedLane}</span>
-          )}
-          {selectedStatus !== 'all' && (
-            <span className="badge">Status: {statusOptions.find((option) => option.id === selectedStatus)?.label ?? selectedStatus}</span>
-          )}
-          {selectedPriority !== 'all' && (
-            <span className="badge">Priorität: {priorityOptions.find((option) => option.id === selectedPriority)?.label ?? selectedPriority}</span>
-          )}
+          {selectedWorkspaceId && <span className="badge">Workspace: {workspacesById.get(selectedWorkspaceId)?.name ?? '–'}</span>}
+          {selectedFolderId && <span className="badge">Ordner: {foldersById.get(selectedFolderId)?.name ?? '–'}</span>}
+          {selectedCategoryId && <span className="badge">Kategorie: {categoriesById.get(selectedCategoryId)?.name ?? '–'}</span>}
+          {selectedLane !== 'all' && <span className="badge">Lane: {laneOptions.find((lane) => lane.id === selectedLane)?.label ?? selectedLane}</span>}
+          {selectedStatus !== 'all' && <span className="badge">Status: {statusOptions.find((option) => option.id === selectedStatus)?.label ?? selectedStatus}</span>}
+          {selectedPriority !== 'all' && <span className="badge">Priorität: {priorityOptions.find((option) => option.id === selectedPriority)?.label ?? selectedPriority}</span>}
           {searchQuery.trim() && <span className="badge">Suche: {searchQuery.trim()}</span>}
           {hasActiveFilters && (
             <button className="ghost-button ghost-button--small" type="button" onClick={resetAllFilters}>

@@ -177,6 +177,16 @@ textarea {
   padding: 14px;
 }
 
+.overview-card--button {
+  text-align: left;
+  cursor: pointer;
+}
+
+.overview-card--active {
+  border-color: #335c99;
+  background: #111b26;
+}
+
 .overview-card__label {
   font-size: 12px;
   color: #9ca3af;
@@ -200,7 +210,7 @@ textarea {
 }
 
 .filter-toolbar--grid {
-  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(150px, 0.75fr)) auto;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr) auto;
 }
 
 .filter-field {

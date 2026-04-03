@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { createTask, getCategories, getFolders, getTasks, getWorkspaces, toggleTask } from './api';
+import { createTask, deleteTask, getCategories, getFolders, getTasks, getWorkspaces, toggleTask, updateTask } from './api';
+import { TaskCard } from './components/TaskCard';
+import { createTaskEditDraft, type TaskEditDraft } from './components/TaskEditor';
 import type { Category, Folder, Lane, Task, Workspace } from './types';
 
 const laneOptions: Array<{ id: Lane | 'all'; label: string }> = [
@@ -18,6 +20,9 @@ export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<TaskEditDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
@@ -90,7 +95,10 @@ export function App() {
       return;
     }
 
-    const defaultWorkspaceId = selectedWorkspaceId ?? workspaces.find((workspace) => workspace.id === 'ws_unsorted')?.id ?? workspaces[0]?.id;
+    const defaultWorkspaceId =
+      selectedWorkspaceId ??
+      workspaces.find((workspace) => workspace.id === 'ws_unsorted')?.id ??
+      workspaces[0]?.id;
 
     if (!defaultWorkspaceId) {
       setError('Kein Workspace verfügbar');
@@ -120,10 +128,85 @@ export function App() {
   async function handleToggle(taskId: string) {
     try {
       setError(null);
+
       const updatedTask = await toggleTask(taskId);
+
       setTasks((current) => current.map((task) => (task.id === taskId ? updatedTask : task)));
+
+      if (editingTaskId === taskId) {
+        setEditDraft(createTaskEditDraft(updatedTask));
+      }
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : 'Task konnte nicht geändert werden');
+    }
+  }
+
+  function handleStartEdit(task: Task) {
+    setEditingTaskId(task.id);
+    setEditDraft(createTaskEditDraft(task));
+    setError(null);
+  }
+
+  function handleCancelEdit() {
+    setEditingTaskId(null);
+    setEditDraft(null);
+  }
+
+  async function handleSaveTask(task: Task) {
+    if (!editDraft) {
+      return;
+    }
+
+    const title = editDraft.title.trim();
+
+    if (!title) {
+      setError('Titel ist erforderlich');
+      return;
+    }
+
+    try {
+      setSavingTaskId(task.id);
+      setError(null);
+
+      const updatedTask = await updateTask(task.id, {
+        title,
+        notes: editDraft.notes.trim(),
+        workspaceId: editDraft.workspaceId,
+        folderId: editDraft.folderId,
+        categoryId: editDraft.categoryId,
+        priority: editDraft.priority,
+        lane: task.status === 'done' ? 'done' : editDraft.lane === 'done' ? 'inbox' : editDraft.lane,
+        dueDate: editDraft.dueDate ? editDraft.dueDate : null,
+      });
+
+      setTasks((current) => current.map((item) => (item.id === task.id ? updatedTask : item)));
+      setEditingTaskId(null);
+      setEditDraft(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Task konnte nicht gespeichert werden');
+    } finally {
+      setSavingTaskId(null);
+    }
+  }
+
+  async function handleDeleteTask(task: Task) {
+    const confirmed = window.confirm(`Aufgabe wirklich löschen?\n\n${task.title}`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setError(null);
+      await deleteTask(task.id);
+
+      setTasks((current) => current.filter((item) => item.id !== task.id));
+
+      if (editingTaskId === task.id) {
+        setEditingTaskId(null);
+        setEditDraft(null);
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Task konnte nicht gelöscht werden');
     }
   }
 
@@ -203,6 +286,7 @@ export function App() {
             <h2>{currentWorkspaceName}</h2>
             <p>Notizen und Aufgaben aus der lokalen API. Checkboxen und Status bleiben deterministisch.</p>
           </div>
+
           <button className="ghost-button" onClick={() => void loadInitialData()} type="button">
             Neu laden
           </button>
@@ -230,30 +314,28 @@ export function App() {
               const workspace = workspaces.find((item) => item.id === task.workspaceId);
               const folder = folders.find((item) => item.id === task.folderId);
               const category = categories.find((item) => item.id === task.categoryId);
+              const isEditing = editingTaskId === task.id;
 
               return (
-                <article className="task-card" key={task.id}>
-                  <label className="task-row">
-                    <input
-                      checked={task.status === 'done'}
-                      onChange={() => void handleToggle(task.id)}
-                      type="checkbox"
-                    />
-                    <div>
-                      <strong className={task.status === 'done' ? 'task-title task-title--done' : 'task-title'}>
-                        {task.title}
-                      </strong>
-                      {task.notes && <p className="task-notes">{task.notes}</p>}
-                      <div className="meta-row">
-                        {workspace && <span className="badge badge--workspace">{workspace.name}</span>}
-                        {folder && <span className="badge">{folder.name}</span>}
-                        {category && <span className="badge">{category.name}</span>}
-                        <span className={`badge badge--priority-${task.priority}`}>{task.priority}</span>
-                        <span className="badge">{task.lane}</span>
-                      </div>
-                    </div>
-                  </label>
-                </article>
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  workspace={workspace}
+                  folder={folder}
+                  category={category}
+                  workspaces={workspaces}
+                  folders={folders}
+                  categories={categories}
+                  isEditing={isEditing}
+                  isSaving={savingTaskId === task.id}
+                  editDraft={isEditing ? editDraft : null}
+                  onToggle={(taskId) => void handleToggle(taskId)}
+                  onStartEdit={handleStartEdit}
+                  onCancelEdit={handleCancelEdit}
+                  onDraftChange={setEditDraft}
+                  onSave={(taskToSave) => void handleSaveTask(taskToSave)}
+                  onDelete={(taskToDelete) => void handleDeleteTask(taskToDelete)}
+                />
               );
             })}
 

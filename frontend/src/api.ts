@@ -1,4 +1,4 @@
-import type { Category, Folder, Task, Workspace } from './types';
+import type { Category, Folder, Lane, Task, Workspace } from './types';
 
 type RawWorkspace = {
   id: string;
@@ -39,6 +39,17 @@ type RawTask = {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+};
+
+export type UpdateTaskPayload = {
+  title: string;
+  notes: string;
+  workspaceId: string;
+  folderId: string | null;
+  categoryId: string | null;
+  priority: Task['priority'];
+  lane: Lane;
+  dueDate: string | null;
 };
 
 async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
@@ -139,9 +150,23 @@ export async function createTask(payload: {
   return mapTask(data);
 }
 
+export async function updateTask(taskId: string, payload: UpdateTaskPayload): Promise<Task> {
+  const data = await fetchJson<RawTask>(`/api/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  return mapTask(data);
+}
+
 export async function toggleTask(taskId: string): Promise<Task> {
   const data = await fetchJson<RawTask>(`/api/tasks/${taskId}/toggle`, {
     method: 'PATCH',
   });
   return mapTask(data);
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  await fetchJson<{ ok: true; deletedId: string }>(`/api/tasks/${taskId}`, {
+    method: 'DELETE',
+  });
 }

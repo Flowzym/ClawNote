@@ -25,8 +25,10 @@ export function App() {
   const [editDraft, setEditDraft] = useState<TaskEditDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedLane, setSelectedLane] = useState<Lane | 'all'>('all');
 
   useEffect(() => {
@@ -56,6 +58,20 @@ export function App() {
     }
   }
 
+  const workspacesById = useMemo(() => {
+    return new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+  }, [workspaces]);
+
+  const foldersById = useMemo(() => {
+    return new Map(folders.map((folder) => [folder.id, folder]));
+  }, [folders]);
+
+  const categoriesById = useMemo(() => {
+    return new Map(categories.map((category) => [category.id, category]));
+  }, [categories]);
+
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
   const visibleFolders = useMemo(() => {
     if (!selectedWorkspaceId) {
       return folders;
@@ -64,20 +80,147 @@ export function App() {
     return folders.filter((folder) => folder.workspaceId === selectedWorkspaceId);
   }, [folders, selectedWorkspaceId]);
 
+  const visibleCategories = useMemo(() => {
+    const categoryIds = new Set(
+      tasks
+        .filter((task) => !selectedWorkspaceId || task.workspaceId === selectedWorkspaceId)
+        .filter((task) => !selectedFolderId || task.folderId === selectedFolderId)
+        .map((task) => task.categoryId)
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    if (categoryIds.size === 0) {
+      return categories;
+    }
+
+    return categories.filter((category) => categoryIds.has(category.id));
+  }, [categories, tasks, selectedWorkspaceId, selectedFolderId]);
+
+  function getTaskSearchText(task: Task): string {
+    return [
+      task.title,
+      task.notes,
+      task.rawInput,
+      task.priority,
+      task.lane,
+      workspacesById.get(task.workspaceId)?.name ?? '',
+      task.folderId ? foldersById.get(task.folderId)?.name ?? '' : '',
+      task.categoryId ? categoriesById.get(task.categoryId)?.name ?? '' : '',
+    ]
+      .join(' ')
+      .toLowerCase();
+  }
+
+  function matchesTask(
+    task: Task,
+    options?: {
+      ignoreWorkspace?: boolean;
+      ignoreFolder?: boolean;
+      ignoreLane?: boolean;
+      ignoreCategory?: boolean;
+      ignoreSearch?: boolean;
+    },
+  ): boolean {
+    if (!options?.ignoreWorkspace && selectedWorkspaceId && task.workspaceId !== selectedWorkspaceId) {
+      return false;
+    }
+
+    if (!options?.ignoreFolder && selectedFolderId && task.folderId !== selectedFolderId) {
+      return false;
+    }
+
+    if (!options?.ignoreLane && selectedLane !== 'all' && task.lane !== selectedLane) {
+      return false;
+    }
+
+    if (!options?.ignoreCategory && selectedCategoryId && task.categoryId !== selectedCategoryId) {
+      return false;
+    }
+
+    if (!options?.ignoreSearch && normalizedSearchQuery && !getTaskSearchText(task).includes(normalizedSearchQuery)) {
+      return false;
+    }
+
+    return true;
+  }
+
   const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
-      if (selectedWorkspaceId && task.workspaceId !== selectedWorkspaceId) {
-        return false;
+    return tasks.filter((task) => matchesTask(task));
+  }, [
+    tasks,
+    selectedWorkspaceId,
+    selectedFolderId,
+    selectedLane,
+    selectedCategoryId,
+    normalizedSearchQuery,
+    workspacesById,
+    foldersById,
+    categoriesById,
+  ]);
+
+  const laneCounts = useMemo(() => {
+    const counts = new Map<Lane | 'all', number>();
+
+    counts.set(
+      'all',
+      tasks.filter((task) => matchesTask(task, { ignoreLane: true })).length,
+    );
+
+    for (const lane of laneOptions) {
+      if (lane.id === 'all') {
+        continue;
       }
-      if (selectedFolderId && task.folderId !== selectedFolderId) {
-        return false;
-      }
-      if (selectedLane !== 'all' && task.lane !== selectedLane) {
-        return false;
-      }
-      return true;
-    });
-  }, [tasks, selectedWorkspaceId, selectedFolderId, selectedLane]);
+
+      counts.set(
+        lane.id,
+        tasks.filter(
+          (task) => task.lane === lane.id && matchesTask(task, { ignoreLane: true }),
+        ).length,
+      );
+    }
+
+    return counts;
+  }, [
+    tasks,
+    selectedWorkspaceId,
+    selectedFolderId,
+    selectedCategoryId,
+    normalizedSearchQuery,
+    workspacesById,
+    foldersById,
+    categoriesById,
+  ]);
+
+  const workspaceCounts = useMemo(() => {
+    const counts = new Map<string | 'all', number>();
+
+    counts.set(
+      'all',
+      tasks.filter((task) => matchesTask(task, { ignoreWorkspace: true, ignoreFolder: true })).length,
+    );
+
+    for (const workspace of workspaces) {
+      counts.set(
+        workspace.id,
+        tasks.filter(
+          (task) =>
+            task.workspaceId === workspace.id &&
+            matchesTask(task, { ignoreWorkspace: true, ignoreFolder: true }),
+        ).length,
+      );
+    }
+
+    return counts;
+  }, [
+    tasks,
+    workspaces,
+    selectedLane,
+    selectedCategoryId,
+    normalizedSearchQuery,
+    workspacesById,
+    foldersById,
+    categoriesById,
+  ]);
 
   const currentWorkspaceName = useMemo(() => {
     if (!selectedWorkspaceId) {
@@ -223,7 +366,10 @@ export function App() {
               onClick={() => setSelectedLane(lane.id)}
               type="button"
             >
-              {lane.label}
+              <span className="nav-button__content">
+                <span>{lane.label}</span>
+                <span className="nav-count">{laneCounts.get(lane.id) ?? 0}</span>
+              </span>
             </button>
           ))}
         </nav>
@@ -238,7 +384,10 @@ export function App() {
             }}
             type="button"
           >
-            Alle Workspaces
+            <span className="nav-button__content">
+              <span>Alle Workspaces</span>
+              <span className="nav-count">{workspaceCounts.get('all') ?? 0}</span>
+            </span>
           </button>
 
           {workspaces.map((workspace) => (
@@ -251,8 +400,13 @@ export function App() {
               }}
               type="button"
             >
-              <span className="workspace-dot" style={{ background: workspace.color }} />
-              {workspace.name}
+              <span className="nav-button__content">
+                <span className="workspace-label">
+                  <span className="workspace-dot" style={{ background: workspace.color }} />
+                  {workspace.name}
+                </span>
+                <span className="nav-count">{workspaceCounts.get(workspace.id) ?? 0}</span>
+              </span>
             </button>
           ))}
         </section>
@@ -304,6 +458,56 @@ export function App() {
             {submitting ? 'Speichern …' : 'Hinzufügen'}
           </button>
         </form>
+
+        <div className="filter-toolbar">
+          <div className="filter-field filter-field--search">
+            <label htmlFor="task-search">Suche</label>
+            <input
+              id="task-search"
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Titel, Notes, Workspace, Ordner, Kategorie …"
+            />
+          </div>
+
+          <div className="filter-field">
+            <label htmlFor="category-filter">Kategorie</label>
+            <select
+              id="category-filter"
+              value={selectedCategoryId ?? ''}
+              onChange={(event) => setSelectedCategoryId(event.target.value || null)}
+            >
+              <option value="">Alle Kategorien</option>
+              {visibleCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() => {
+              setSearchQuery('');
+              setSelectedCategoryId(null);
+            }}
+          >
+            Filter zurücksetzen
+          </button>
+        </div>
+
+        <div className="result-meta">
+          <span className="badge">{filteredTasks.length} Aufgaben</span>
+          {selectedCategoryId && (
+            <span className="badge">
+              Kategorie: {categoriesById.get(selectedCategoryId)?.name ?? '–'}
+            </span>
+          )}
+          {searchQuery.trim() && <span className="badge">Suche: {searchQuery.trim()}</span>}
+        </div>
 
         {error && <div className="notice notice--error">{error}</div>}
         {loading && <div className="notice">Lade Daten …</div>}

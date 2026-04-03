@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createTask, deleteTask, getCategories, getFolders, getTasks, getWorkspaces, structureTasks, toggleTask, updateTask } from './api';
+import { AiSuggestionCard } from './components/AiSuggestionCard';
 import { TaskCard } from './components/TaskCard';
 import { createTaskEditDraft, type TaskEditDraft } from './components/TaskEditor';
-import type { AiStructureTaskSuggestion, Category, Folder, Lane, Priority, Task, Workspace } from './types';
+import type { AiStructureTaskSuggestion, Category, Folder, Lane, Task, Workspace } from './types';
 
 const laneOptions: Array<{ id: Lane | 'all'; label: string }> = [
   { id: 'all', label: 'Alle' },
@@ -11,13 +12,6 @@ const laneOptions: Array<{ id: Lane | 'all'; label: string }> = [
   { id: 'week', label: 'Diese Woche' },
   { id: 'later', label: 'Später' },
   { id: 'done', label: 'Erledigt' },
-];
-
-const suggestionLaneOptions: Array<{ id: Exclude<Lane, 'done'>; label: string }> = [
-  { id: 'inbox', label: 'Inbox' },
-  { id: 'today', label: 'Heute' },
-  { id: 'week', label: 'Diese Woche' },
-  { id: 'later', label: 'Später' },
 ];
 
 const statusOptions = [
@@ -34,8 +28,6 @@ const priorityOptions = [
   { id: 'kritisch', label: 'Kritisch' },
   { id: 'highPlus', label: 'Hoch / Kritisch' },
 ] as const;
-
-const editablePriorityOptions: Priority[] = ['niedrig', 'mittel', 'hoch', 'kritisch'];
 
 const sortOptions = [
   { id: 'createdDesc', label: 'Neueste zuerst' },
@@ -775,158 +767,19 @@ export function App() {
             <div className="ai-panel__source">Quelle: {aiSourceInput}</div>
 
             <div className="ai-suggestion-list">
-              {aiSuggestions.map((suggestion) => {
-                const suggestionFolders = folders.filter((folder) => folder.workspaceId === suggestion.workspaceIdSuggestion);
-
-                return (
-                  <article className="ai-suggestion-card" key={suggestion.suggestionId}>
-                    <div className="ai-suggestion-card__header">
-                      <div className="ai-suggestion-card__meta">
-                        <span className="badge">Confidence: {Math.round(suggestion.confidence * 100)}%</span>
-                        {suggestion.tags.map((tag) => (
-                          <span className="badge" key={tag}>
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="ai-suggestion-card__actions">
-                        <button
-                          className="ghost-button ghost-button--small"
-                          disabled={applyingSuggestions}
-                          onClick={() => removeAiSuggestion(suggestion.suggestionId)}
-                          type="button"
-                        >
-                          Entfernen
-                        </button>
-                        <button
-                          className="primary-button ghost-button--small"
-                          disabled={applyingSuggestions}
-                          onClick={() => void handleApplySuggestion(suggestion.suggestionId)}
-                          type="button"
-                        >
-                          Übernehmen
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="ai-suggestion-card__editor editor-grid">
-                      <label className="field field--full">
-                        <span>Titel</span>
-                        <input
-                          type="text"
-                          value={suggestion.title}
-                          onChange={(event) => updateAiSuggestion(suggestion.suggestionId, { title: event.target.value })}
-                          placeholder="Titel"
-                        />
-                      </label>
-
-                      <label className="field">
-                        <span>Workspace</span>
-                        <select
-                          value={suggestion.workspaceIdSuggestion}
-                          onChange={(event) => {
-                            const workspaceId = event.target.value;
-                            const nextFolders = folders.filter((folder) => folder.workspaceId === workspaceId);
-                            const keepFolder = nextFolders.some((folder) => folder.id === suggestion.folderIdSuggestion);
-
-                            updateAiSuggestion(suggestion.suggestionId, {
-                              workspaceIdSuggestion: workspaceId,
-                              folderIdSuggestion: keepFolder ? suggestion.folderIdSuggestion : null,
-                            });
-                          }}
-                        >
-                          {workspaces.map((workspace) => (
-                            <option key={workspace.id} value={workspace.id}>
-                              {workspace.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span>Ordner</span>
-                        <select
-                          value={suggestion.folderIdSuggestion ?? ''}
-                          onChange={(event) => updateAiSuggestion(suggestion.suggestionId, { folderIdSuggestion: event.target.value || null })}
-                        >
-                          <option value="">Kein Ordner</option>
-                          {suggestionFolders.map((folder) => (
-                            <option key={folder.id} value={folder.id}>
-                              {folder.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span>Kategorie</span>
-                        <select
-                          value={suggestion.categoryIdSuggestion ?? ''}
-                          onChange={(event) => updateAiSuggestion(suggestion.suggestionId, { categoryIdSuggestion: event.target.value || null })}
-                        >
-                          <option value="">Keine Kategorie</option>
-                          {categories.map((category) => (
-                            <option key={category.id} value={category.id}>
-                              {category.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span>Priorität</span>
-                        <select
-                          value={suggestion.priority}
-                          onChange={(event) => updateAiSuggestion(suggestion.suggestionId, { priority: event.target.value as Priority })}
-                        >
-                          {editablePriorityOptions.map((priority) => (
-                            <option key={priority} value={priority}>
-                              {priority}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span>Lane</span>
-                        <select
-                          value={suggestion.lane === 'done' ? 'inbox' : suggestion.lane}
-                          onChange={(event) => updateAiSuggestion(suggestion.suggestionId, { lane: event.target.value as Lane })}
-                        >
-                          {suggestionLaneOptions.map((lane) => (
-                            <option key={lane.id} value={lane.id}>
-                              {lane.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span>Fälligkeit</span>
-                        <input
-                          type="date"
-                          value={suggestion.dueDate ?? ''}
-                          onChange={(event) => updateAiSuggestion(suggestion.suggestionId, { dueDate: event.target.value || null })}
-                        />
-                      </label>
-
-                      <label className="field field--full">
-                        <span>Notizen</span>
-                        <textarea
-                          rows={3}
-                          value={suggestion.notes}
-                          onChange={(event) => updateAiSuggestion(suggestion.suggestionId, { notes: event.target.value })}
-                          placeholder="Notizen"
-                        />
-                      </label>
-                    </div>
-
-                    <p className="ai-suggestion-card__hint">
-                      Erledigt bleibt checkbox-gesteuert. Vorschläge werden erst beim Übernehmen als normale Tasks gespeichert.
-                    </p>
-                  </article>
-                );
-              })}
+              {aiSuggestions.map((suggestion) => (
+                <AiSuggestionCard
+                  key={suggestion.suggestionId}
+                  suggestion={suggestion}
+                  workspaces={workspaces}
+                  folders={folders}
+                  categories={categories}
+                  isApplying={applyingSuggestions}
+                  onChange={(patch) => updateAiSuggestion(suggestion.suggestionId, patch)}
+                  onRemove={() => removeAiSuggestion(suggestion.suggestionId)}
+                  onApply={() => void handleApplySuggestion(suggestion.suggestionId)}
+                />
+              ))}
             </div>
           </section>
         )}

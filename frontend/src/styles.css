@@ -131,11 +131,13 @@ textarea {
 
 .content-header h2,
 .sidebar h1,
-.sidebar h2 {
+.sidebar h2,
+.ai-panel__header h3 {
   margin: 0 0 8px;
 }
 
-.content-header p {
+.content-header p,
+.ai-panel__header p {
   margin: 0 0 20px;
   color: #9ca3af;
 }
@@ -155,10 +157,75 @@ textarea {
   padding: 12px 14px;
 }
 
+.quick-entry-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .quick-entry button,
 .ghost-button {
   background: #1b2430;
   color: #e5e7eb;
+}
+
+.ai-panel {
+  border: 1px solid #263140;
+  border-radius: 12px;
+  background: #0d1218;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.ai-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ai-panel__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-panel__source {
+  color: #94a3b8;
+  font-size: 13px;
+  margin-bottom: 12px;
+  word-break: break-word;
+}
+
+.ai-suggestion-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-suggestion-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  border: 1px solid #222b36;
+  border-radius: 12px;
+  background: #11161d;
+  padding: 14px;
+}
+
+.ai-suggestion-card__main strong {
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
+.ai-suggestion-card__main p {
+  margin: 0 0 10px;
+  color: #9ca3af;
+  white-space: pre-wrap;
+}
+
+.ai-suggestion-card__actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
 }
 
 .overview-grid {
@@ -421,6 +488,14 @@ textarea {
   .filter-toolbar--grid {
     grid-template-columns: 1fr 1fr;
   }
+
+  .quick-entry {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-suggestion-card {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {
@@ -428,12 +503,18 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .content-header {
+  .content-header,
+  .ai-panel__header {
     flex-direction: column;
   }
 
-  .filter-toolbar--grid {
+  .filter-toolbar--grid,
+  .quick-entry-actions {
     grid-template-columns: 1fr;
+  }
+
+  .quick-entry-actions {
+    display: grid;
   }
 
   .task-card-header {

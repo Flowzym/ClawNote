@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { createTask, deleteTask, getCategories, getFolders, getTasks, getWorkspaces, toggleTask, updateTask } from './api';
+import { createTask, deleteTask, getCategories, getFolders, getTasks, getWorkspaces, structureTasks, toggleTask, updateTask } from './api';
 import { TaskCard } from './components/TaskCard';
 import { createTaskEditDraft, type TaskEditDraft } from './components/TaskEditor';
-import type { Category, Folder, Lane, Task, Workspace } from './types';
+import type { AiStructureTaskSuggestion, Category, Folder, Lane, Task, Workspace } from './types';
 
 const laneOptions: Array<{ id: Lane | 'all'; label: string }> = [
   { id: 'all', label: 'Alle' },
@@ -38,6 +38,10 @@ type SortOptionId = (typeof sortOptions)[number]['id'];
 type StatusFilterId = (typeof statusOptions)[number]['id'];
 type PriorityFilterId = (typeof priorityOptions)[number]['id'];
 
+type LocalAiSuggestion = AiStructureTaskSuggestion & {
+  suggestionId: string;
+};
+
 export function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -45,12 +49,16 @@ export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [structuring, setStructuring] = useState(false);
+  const [applyingSuggestions, setApplyingSuggestions] = useState(false);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<TaskEditDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [aiSourceInput, setAiSourceInput] = useState('');
+  const [aiSuggestions, setAiSuggestions] = useState<LocalAiSuggestion[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -379,6 +387,11 @@ export function App() {
     setSelectedSort('createdDesc');
   }
 
+  function clearAiSuggestions() {
+    setAiSuggestions([]);
+    setAiSourceInput('');
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
 
@@ -410,10 +423,112 @@ export function App() {
       setTasks((current) => [createdTask, ...current]);
       setInput('');
       setSelectedLane('all');
+      clearAiSuggestions();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Aufgabe konnte nicht erstellt werden');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleStructureInput() {
+    const rawInput = input.trim();
+    if (!rawInput) {
+      return;
+    }
+
+    try {
+      setStructuring(true);
+      setError(null);
+
+      const response = await structureTasks({
+        rawInput,
+        availableWorkspaces: workspaces.map((workspace) => ({ id: workspace.id, name: workspace.name })),
+        availableFolders: folders.map((folder) => ({ id: folder.id, workspaceId: folder.workspaceId, name: folder.name })),
+        availableCategories: categories.map((category) => ({ id: category.id, name: category.name })),
+      });
+
+      setAiSourceInput(response.rawInput);
+      setAiSuggestions(
+        response.tasks.map((task, index) => ({
+          ...task,
+          suggestionId: `suggestion-${index}-${task.title}`,
+        })),
+      );
+    } catch (structureError) {
+      setError(structureError instanceof Error ? structureError.message : 'Input konnte nicht strukturiert werden');
+    } finally {
+      setStructuring(false);
+    }
+  }
+
+  async function handleApplySuggestion(suggestionId: string) {
+    const suggestion = aiSuggestions.find((item) => item.suggestionId === suggestionId);
+    if (!suggestion) {
+      return;
+    }
+
+    try {
+      setApplyingSuggestions(true);
+      setError(null);
+
+      const createdTask = await createTask({
+        rawInput: suggestion.title,
+        title: suggestion.title,
+        notes: suggestion.notes,
+        workspaceId: suggestion.workspaceIdSuggestion,
+        folderId: suggestion.folderIdSuggestion,
+        categoryId: suggestion.categoryIdSuggestion,
+        priority: suggestion.priority,
+        lane: suggestion.lane === 'done' ? 'inbox' : suggestion.lane,
+        dueDate: suggestion.dueDate,
+        source: 'ai',
+      });
+
+      setTasks((current) => [createdTask, ...current]);
+      setAiSuggestions((current) => current.filter((item) => item.suggestionId !== suggestionId));
+    } catch (applyError) {
+      setError(applyError instanceof Error ? applyError.message : 'Vorschlag konnte nicht übernommen werden');
+    } finally {
+      setApplyingSuggestions(false);
+    }
+  }
+
+  async function handleApplyAllSuggestions() {
+    if (aiSuggestions.length === 0) {
+      return;
+    }
+
+    try {
+      setApplyingSuggestions(true);
+      setError(null);
+
+      const createdTasks: Task[] = [];
+
+      for (const suggestion of aiSuggestions) {
+        const createdTask = await createTask({
+          rawInput: suggestion.title,
+          title: suggestion.title,
+          notes: suggestion.notes,
+          workspaceId: suggestion.workspaceIdSuggestion,
+          folderId: suggestion.folderIdSuggestion,
+          categoryId: suggestion.categoryIdSuggestion,
+          priority: suggestion.priority,
+          lane: suggestion.lane === 'done' ? 'inbox' : suggestion.lane,
+          dueDate: suggestion.dueDate,
+          source: 'ai',
+        });
+
+        createdTasks.push(createdTask);
+      }
+
+      setTasks((current) => [...createdTasks.reverse(), ...current]);
+      clearAiSuggestions();
+      setInput('');
+    } catch (applyError) {
+      setError(applyError instanceof Error ? applyError.message : 'Vorschläge konnten nicht übernommen werden');
+    } finally {
+      setApplyingSuggestions(false);
     }
   }
 
@@ -605,10 +720,73 @@ export function App() {
             placeholder="Aufgabe oder Notiz eingeben …"
             aria-label="Aufgabe oder Notiz"
           />
-          <button disabled={submitting} type="submit">
-            {submitting ? 'Speichern …' : 'Hinzufügen'}
-          </button>
+          <div className="quick-entry-actions">
+            <button className="ghost-button" disabled={structuring || !input.trim()} onClick={() => void handleStructureInput()} type="button">
+              {structuring ? 'Strukturiere …' : 'Strukturieren'}
+            </button>
+            <button disabled={submitting} type="submit">
+              {submitting ? 'Speichern …' : 'Hinzufügen'}
+            </button>
+          </div>
         </form>
+
+        {aiSuggestions.length > 0 && (
+          <section className="ai-panel">
+            <div className="ai-panel__header">
+              <div>
+                <h3>Strukturvorschläge</h3>
+                <p>Vorschläge aus der Assistenzschicht. Nichts wird automatisch gespeichert.</p>
+              </div>
+              <div className="ai-panel__actions">
+                <button className="ghost-button ghost-button--small" disabled={applyingSuggestions} onClick={clearAiSuggestions} type="button">
+                  Verwerfen
+                </button>
+                <button className="primary-button ghost-button--small" disabled={applyingSuggestions} onClick={() => void handleApplyAllSuggestions()} type="button">
+                  {applyingSuggestions ? 'Übernehme …' : `Alle übernehmen (${aiSuggestions.length})`}
+                </button>
+              </div>
+            </div>
+
+            <div className="ai-panel__source">Quelle: {aiSourceInput}</div>
+
+            <div className="ai-suggestion-list">
+              {aiSuggestions.map((suggestion) => (
+                <article className="ai-suggestion-card" key={suggestion.suggestionId}>
+                  <div className="ai-suggestion-card__main">
+                    <strong>{suggestion.title}</strong>
+                    {suggestion.notes && <p>{suggestion.notes}</p>}
+                    <div className="meta-row">
+                      <span className="badge">Confidence: {Math.round(suggestion.confidence * 100)}%</span>
+                      {workspacesById.get(suggestion.workspaceIdSuggestion) && (
+                        <span className="badge badge--workspace">{workspacesById.get(suggestion.workspaceIdSuggestion)?.name}</span>
+                      )}
+                      {suggestion.folderIdSuggestion && foldersById.get(suggestion.folderIdSuggestion) && (
+                        <span className="badge">{foldersById.get(suggestion.folderIdSuggestion)?.name}</span>
+                      )}
+                      {suggestion.categoryIdSuggestion && categoriesById.get(suggestion.categoryIdSuggestion) && (
+                        <span className="badge">{categoriesById.get(suggestion.categoryIdSuggestion)?.name}</span>
+                      )}
+                      <span className={`badge badge--priority-${suggestion.priority}`}>{suggestion.priority}</span>
+                      <span className="badge">{suggestion.lane === 'done' ? 'inbox' : suggestion.lane}</span>
+                      {suggestion.dueDate && <span className="badge">fällig {suggestion.dueDate}</span>}
+                      {suggestion.tags.map((tag) => (
+                        <span className="badge" key={tag}>#{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="ai-suggestion-card__actions">
+                    <button className="ghost-button ghost-button--small" disabled={applyingSuggestions} onClick={() => setAiSuggestions((current) => current.filter((item) => item.suggestionId !== suggestion.suggestionId))} type="button">
+                      Entfernen
+                    </button>
+                    <button className="primary-button ghost-button--small" disabled={applyingSuggestions} onClick={() => void handleApplySuggestion(suggestion.suggestionId)} type="button">
+                      Übernehmen
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="overview-grid" aria-label="Übersicht zur aktuellen Ansicht">
           <button type="button" className="overview-card overview-card--button" onClick={resetOverviewQuickFilters}>

@@ -1,4 +1,4 @@
-import type { Category, Folder, Lane, Task, Workspace } from './types';
+import type { AiStructureResponse, AiStructureTaskSuggestion, Category, Folder, Lane, Task, Workspace } from './types';
 
 type RawWorkspace = {
   id: string;
@@ -41,6 +41,26 @@ type RawTask = {
   completed_at: string | null;
 };
 
+type RawAiStructureTaskSuggestion = {
+  title: string;
+  notes: string;
+  workspaceIdSuggestion: string;
+  folderIdSuggestion: string | null;
+  categoryIdSuggestion: string | null;
+  priority: AiStructureTaskSuggestion['priority'];
+  lane: AiStructureTaskSuggestion['lane'];
+  dueDate: string | null;
+  tags: string[];
+  confidence: number;
+  newFolderSuggestion: string | null;
+  newCategorySuggestion: string | null;
+};
+
+type RawAiStructureResponse = {
+  rawInput: string;
+  tasks: RawAiStructureTaskSuggestion[];
+};
+
 export type UpdateTaskPayload = {
   title: string;
   notes: string;
@@ -50,6 +70,19 @@ export type UpdateTaskPayload = {
   priority: Task['priority'];
   lane: Lane;
   dueDate: string | null;
+};
+
+export type CreateTaskPayload = {
+  rawInput: string;
+  title?: string;
+  notes?: string;
+  workspaceId: string;
+  folderId?: string | null;
+  categoryId?: string | null;
+  priority?: Task['priority'];
+  lane?: Exclude<Task['lane'], 'done'>;
+  dueDate?: string | null;
+  source?: 'manual' | 'ai' | 'imported';
 };
 
 async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
@@ -122,6 +155,23 @@ function mapTask(raw: RawTask): Task {
   };
 }
 
+function mapAiStructureTaskSuggestion(raw: RawAiStructureTaskSuggestion): AiStructureTaskSuggestion {
+  return {
+    title: raw.title,
+    notes: raw.notes,
+    workspaceIdSuggestion: raw.workspaceIdSuggestion,
+    folderIdSuggestion: raw.folderIdSuggestion,
+    categoryIdSuggestion: raw.categoryIdSuggestion,
+    priority: raw.priority,
+    lane: raw.lane,
+    dueDate: raw.dueDate,
+    tags: raw.tags,
+    confidence: raw.confidence,
+    newFolderSuggestion: raw.newFolderSuggestion,
+    newCategorySuggestion: raw.newCategorySuggestion,
+  };
+}
+
 export async function getWorkspaces(): Promise<Workspace[]> {
   const data = await fetchJson<RawWorkspace[]>('/api/workspaces');
   return data.map(mapWorkspace);
@@ -142,16 +192,29 @@ export async function getTasks(): Promise<Task[]> {
   return data.map(mapTask);
 }
 
-export async function createTask(payload: {
-  rawInput: string;
-  workspaceId: string;
-  folderId?: string | null;
-}): Promise<Task> {
+export async function createTask(payload: CreateTaskPayload): Promise<Task> {
   const data = await fetchJson<RawTask>('/api/tasks', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
   return mapTask(data);
+}
+
+export async function structureTasks(payload: {
+  rawInput: string;
+  availableWorkspaces: Array<{ id: string; name: string }>;
+  availableFolders: Array<{ id: string; workspaceId: string; name: string }>;
+  availableCategories: Array<{ id: string; name: string }>;
+}): Promise<AiStructureResponse> {
+  const data = await fetchJson<RawAiStructureResponse>('/api/ai/structure', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  return {
+    rawInput: data.rawInput,
+    tasks: data.tasks.map(mapAiStructureTaskSuggestion),
+  };
 }
 
 export async function updateTask(taskId: string, payload: UpdateTaskPayload): Promise<Task> {

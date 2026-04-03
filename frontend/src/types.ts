@@ -43,3 +43,23 @@ export interface Task {
   updatedAt: string;
   completedAt: string | null;
 }
+
+export interface AiStructureTaskSuggestion {
+  title: string;
+  notes: string;
+  workspaceIdSuggestion: string;
+  folderIdSuggestion: string | null;
+  categoryIdSuggestion: string | null;
+  priority: Priority;
+  lane: Lane;
+  dueDate: string | null;
+  tags: string[];
+  confidence: number;
+  newFolderSuggestion: string | null;
+  newCategorySuggestion: string | null;
+}
+
+export interface AiStructureResponse {
+  rawInput: string;
+  tasks: AiStructureTaskSuggestion[];
+}

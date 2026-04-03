@@ -203,7 +203,6 @@ textarea {
 
 .ai-suggestion-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   border: 1px solid #222b36;
   border-radius: 12px;
@@ -211,21 +210,34 @@ textarea {
   padding: 14px;
 }
 
-.ai-suggestion-card__main strong {
-  display: inline-block;
-  margin-bottom: 6px;
+.ai-suggestion-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
 }
 
-.ai-suggestion-card__main p {
-  margin: 0 0 10px;
-  color: #9ca3af;
-  white-space: pre-wrap;
+.ai-suggestion-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-suggestion-card__editor {
+  margin-top: 2px;
 }
 
 .ai-suggestion-card__actions {
   display: flex;
   gap: 8px;
   align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.ai-suggestion-card__hint {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
 }
 
 .overview-grid {
@@ -492,10 +504,6 @@ textarea {
   .quick-entry {
     grid-template-columns: 1fr;
   }
-
-  .ai-suggestion-card {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 900px) {
@@ -504,7 +512,8 @@ textarea {
   }
 
   .content-header,
-  .ai-panel__header {
+  .ai-panel__header,
+  .ai-suggestion-card__header {
     flex-direction: column;
   }
 

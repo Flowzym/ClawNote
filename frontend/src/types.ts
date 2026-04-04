@@ -62,7 +62,7 @@ export interface AiStructureTaskSuggestion {
 export interface AiStructureMeta {
   source: 'heuristic' | 'llm';
   fallbackUsed: boolean;
-  provider: 'disabled' | 'openai_compatible';
+  provider: 'disabled' | 'openai_compatible' | 'openclaw';
 }
 
 export interface AiStructureResponse {

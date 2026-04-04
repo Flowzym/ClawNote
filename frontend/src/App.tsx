@@ -74,16 +74,29 @@ function formatAiMeta(meta: AiStructureMeta | null): { source: string; detail: s
   const source = meta.source === 'llm' ? 'LLM' : 'Heuristik';
 
   if (meta.fallbackUsed) {
+    const detailParts = ['Fallback aktiv'];
+
+    if (meta.provider === 'openclaw') {
+      detailParts.push('nach OpenClaw');
+    } else if (meta.provider === 'openai_compatible') {
+      detailParts.push('nach OpenAI-kompatibel');
+    }
+
     return {
       source,
-      detail: 'Fallback aktiv',
+      detail: detailParts.join(' · '),
     };
   }
 
   if (meta.source === 'llm') {
     return {
       source,
-      detail: meta.provider === 'openai_compatible' ? 'OpenAI-kompatibel' : null,
+      detail:
+        meta.provider === 'openclaw'
+          ? 'OpenClaw'
+          : meta.provider === 'openai_compatible'
+            ? 'OpenAI-kompatibel'
+            : null,
     };
   }
 

@@ -2,6 +2,7 @@ import { getAiConfig } from '../config.js';
 import { structureHeuristically } from './heuristicStructure.js';
 import { normalizeStructureResult } from './normalizeStructureResult.js';
 import { requestOpenAiCompatibleStructure } from './providers/openaiCompatible.js';
+import { requestOpenClawStructure } from './providers/openclaw.js';
 import type { StructureArgs, StructureResponse } from './types.js';
 
 export async function structureWithAiOrFallback(args: StructureArgs): Promise<StructureResponse> {
@@ -20,7 +21,11 @@ export async function structureWithAiOrFallback(args: StructureArgs): Promise<St
   }
 
   try {
-    const rawResult = await requestOpenAiCompatibleStructure(args, config);
+    const rawResult =
+      config.provider === 'openclaw'
+        ? await requestOpenClawStructure(args, config)
+        : await requestOpenAiCompatibleStructure(args, config);
+
     const tasks = normalizeStructureResult(rawResult, args);
 
     if (tasks.length === 0) {

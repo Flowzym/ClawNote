@@ -37,7 +37,7 @@ export type StructureArgs = {
 export type StructureMeta = {
   source: 'heuristic' | 'llm';
   fallbackUsed: boolean;
-  provider: 'disabled' | 'openai_compatible';
+  provider: 'disabled' | 'openai_compatible' | 'openclaw';
 };
 
 export type StructureResponse = {

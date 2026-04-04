@@ -59,7 +59,14 @@ export interface AiStructureTaskSuggestion {
   newCategorySuggestion: string | null;
 }
 
+export interface AiStructureMeta {
+  source: 'heuristic' | 'llm';
+  fallbackUsed: boolean;
+  provider: 'disabled' | 'openai_compatible';
+}
+
 export interface AiStructureResponse {
   rawInput: string;
   tasks: AiStructureTaskSuggestion[];
+  meta: AiStructureMeta;
 }

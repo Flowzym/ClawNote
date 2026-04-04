@@ -1,4 +1,4 @@
-import type { AiStructureResponse, AiStructureTaskSuggestion, Category, Folder, Lane, Task, Workspace } from './types';
+import type { AiStructureMeta, AiStructureResponse, AiStructureTaskSuggestion, Category, Folder, Lane, Task, Workspace } from './types';
 
 type RawWorkspace = {
   id: string;
@@ -56,9 +56,16 @@ type RawAiStructureTaskSuggestion = {
   newCategorySuggestion: string | null;
 };
 
+type RawAiStructureMeta = {
+  source: AiStructureMeta['source'];
+  fallbackUsed: boolean;
+  provider: AiStructureMeta['provider'];
+};
+
 type RawAiStructureResponse = {
   rawInput: string;
   tasks: RawAiStructureTaskSuggestion[];
+  meta: RawAiStructureMeta;
 };
 
 export type UpdateTaskPayload = {
@@ -172,6 +179,14 @@ function mapAiStructureTaskSuggestion(raw: RawAiStructureTaskSuggestion): AiStru
   };
 }
 
+function mapAiStructureMeta(raw: RawAiStructureMeta): AiStructureMeta {
+  return {
+    source: raw.source,
+    fallbackUsed: raw.fallbackUsed,
+    provider: raw.provider,
+  };
+}
+
 export async function getWorkspaces(): Promise<Workspace[]> {
   const data = await fetchJson<RawWorkspace[]>('/api/workspaces');
   return data.map(mapWorkspace);
@@ -214,6 +229,7 @@ export async function structureTasks(payload: {
   return {
     rawInput: data.rawInput,
     tasks: data.tasks.map(mapAiStructureTaskSuggestion),
+    meta: mapAiStructureMeta(data.meta),
   };
 }
 

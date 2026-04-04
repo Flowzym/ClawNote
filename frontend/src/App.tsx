@@ -3,7 +3,7 @@ import { createTask, deleteTask, getCategories, getFolders, getTasks, getWorkspa
 import { AiSuggestionCard, type AiSuggestionValidation } from './components/AiSuggestionCard';
 import { TaskCard } from './components/TaskCard';
 import { createTaskEditDraft, type TaskEditDraft } from './components/TaskEditor';
-import type { AiStructureTaskSuggestion, Category, Folder, Lane, Task, Workspace } from './types';
+import type { AiStructureMeta, AiStructureTaskSuggestion, Category, Folder, Lane, Task, Workspace } from './types';
 
 const laneOptions: Array<{ id: Lane | 'all'; label: string }> = [
   { id: 'all', label: 'Alle' },
@@ -66,6 +66,33 @@ function validateSuggestion(suggestion: LocalAiSuggestion, folders: Folder[]): A
   };
 }
 
+function formatAiMeta(meta: AiStructureMeta | null): { source: string; detail: string | null } | null {
+  if (!meta) {
+    return null;
+  }
+
+  const source = meta.source === 'llm' ? 'LLM' : 'Heuristik';
+
+  if (meta.fallbackUsed) {
+    return {
+      source,
+      detail: 'Fallback aktiv',
+    };
+  }
+
+  if (meta.source === 'llm') {
+    return {
+      source,
+      detail: meta.provider === 'openai_compatible' ? 'OpenAI-kompatibel' : null,
+    };
+  }
+
+  return {
+    source,
+    detail: null,
+  };
+}
+
 export function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -84,6 +111,7 @@ export function App() {
   const [input, setInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [aiSourceInput, setAiSourceInput] = useState('');
+  const [aiStructureMeta, setAiStructureMeta] = useState<AiStructureMeta | null>(null);
   const [aiSuggestions, setAiSuggestions] = useState<LocalAiSuggestion[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -136,6 +164,7 @@ export function App() {
   const foldersById = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const aiMetaDisplay = useMemo(() => formatAiMeta(aiStructureMeta), [aiStructureMeta]);
 
   const suggestionValidations = useMemo(
     () =>
@@ -441,6 +470,7 @@ export function App() {
   function clearAiSuggestions() {
     setAiSuggestions([]);
     setAiSourceInput('');
+    setAiStructureMeta(null);
   }
 
   function removeAiSuggestion(suggestionId: string) {
@@ -448,6 +478,7 @@ export function App() {
       const next = current.filter((item) => item.suggestionId !== suggestionId);
       if (next.length === 0) {
         setAiSourceInput('');
+        setAiStructureMeta(null);
       }
       return next;
     });
@@ -569,6 +600,7 @@ export function App() {
       });
 
       setAiSourceInput(response.rawInput);
+      setAiStructureMeta(response.meta);
       setAiSuggestions(
         response.tasks.map((task, index) => ({
           ...task,
@@ -873,6 +905,12 @@ export function App() {
             </div>
 
             <div className="ai-panel__source">Quelle: {aiSourceInput}</div>
+            {aiMetaDisplay && (
+              <div className="ai-panel__meta">
+                <span className="badge">Quelle: {aiMetaDisplay.source}</span>
+                {aiMetaDisplay.detail && <span className="badge">{aiMetaDisplay.detail}</span>}
+              </div>
+            )}
             {invalidSuggestionCount > 0 && <div className="ai-panel__validation">Mindestens ein Vorschlag braucht noch einen gültigen Titel.</div>}
 
             <div className="ai-suggestion-list">

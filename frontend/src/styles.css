@@ -196,6 +196,13 @@ textarea {
   word-break: break-word;
 }
 
+.ai-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
 .ai-panel__validation {
   margin-bottom: 12px;
   border: 1px solid #7c5c1b;
